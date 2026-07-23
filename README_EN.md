@@ -10,7 +10,7 @@ page, shows active upgrades, and sends completion notifications.
 - Completion notifications for buildings, Laboratory research, and Pet House upgrades.
 - Separate alerts when Lab Assistant, Builder's Apprentice, or Alchemist are
   released by completing an actual upgrade. Their cooldown expiration is ignored.
-- `/start` main menu with an all-accounts view and per-account views.
+- `/start` main menu with an all-accounts view, per-account views, and time settings.
 - The dashboard message is edited every 10 seconds, keeping countdowns current
   without sending extra messages.
 - SQLite snapshots persist across restarts.

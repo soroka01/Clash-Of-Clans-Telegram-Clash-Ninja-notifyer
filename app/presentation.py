@@ -49,13 +49,14 @@ def _upgrade_line(upgrade: Upgrade, prefix: str, utc_offset_hours: int) -> str:
 
 def _village_block(village_id: str, name: str, upgrades: list[Upgrade], utc_offset_hours: int) -> str:
     village_url = f"{_TRACKER_URL}/{escape(village_id, quote=True)}/home"
-    village_title = f'<a href="{village_url}">🏰 <b>{escape(name)}</b></a>'
+    village_title = f'🏰 <b>{escape(name)}</b>'
+    village_link = f'<a href="{village_url}">🔗 Открыть</a>'
     if not upgrades:
-        return f"{village_title}\n└ ✨ <i>Нет текущих улучшений</i>"
+        return f"{village_title} · {village_link}\n└ ✨ <i>Нет текущих улучшений</i>"
     grouped: dict[str, list[Upgrade]] = defaultdict(list)
     for upgrade in upgrades:
         grouped[upgrade.category].append(upgrade)
-    lines = [f"{village_title} <i>· {len(upgrades)} в работе</i>"]
+    lines = [f"{village_title} <i>· {len(upgrades)} в работе</i> · {village_link}"]
     active_categories = [category for category in ("builder", "lab", "pet", "helper") if grouped.get(category)]
     for index, category in enumerate(active_categories):
         items = grouped[category]
@@ -79,10 +80,10 @@ def render_dashboard(snapshot: Snapshot, view: str, utc_offset_hours: int = 0) -
 
     if selected_id and selected_id in villages:
         body = _village_block(selected_id, villages[selected_id], by_village[selected_id], utc_offset_hours)
-        title = f'⚔️ <a href="{_TRACKER_URL}"><b>Текущие улучшения</b></a>'
+        title = "⚔️ <b>Текущие улучшения</b>"
         subtitle = f"<i>Аккаунт: {escape(villages[selected_id])}</i>"
     else:
-        title = f'⚔️ <a href="{_TRACKER_URL}"><b>Текущие улучшения</b></a>'
+        title = "⚔️ <b>Текущие улучшения</b>"
         subtitle = f"<i>Все аккаунты · {len(villages)}</i>"
         body = "\n\n".join(
             _village_block(village_id, name, by_village[village_id], utc_offset_hours)
@@ -93,7 +94,8 @@ def render_dashboard(snapshot: Snapshot, view: str, utc_offset_hours: int = 0) -
         body = "Данные ещё загружаются."
 
     updated = snapshot.fetched_at.astimezone(_utc_zone(utc_offset_hours)).strftime("%H:%M:%S")
-    text = f"{title}\n{subtitle}\n🕒 <code>{updated} {_utc_label(utc_offset_hours)}</code>\n\n{body}"
+    tracker_link = f'<a href="{_TRACKER_URL}">🌐 Открыть Clash Ninja Upgrade Tracker</a>'
+    text = f"{title}\n{tracker_link}\n{subtitle}\n🕒 <code>{updated} {_utc_label(utc_offset_hours)}</code>\n\n{body}"
     # Telegram allows at most 4096 characters. Preserve the keyboard even for large accounts.
     if len(text) > 4096:
         text = text[:4050] + "\n\n<i>Список сокращён: откройте отдельный аккаунт.</i>"
@@ -117,10 +119,30 @@ def render_main_menu() -> tuple[str, InlineKeyboardMarkup]:
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="📋 Текущие улучшения", callback_data="menu:upgrades")],
+            [InlineKeyboardButton(text="⚙️ Настройки времени", callback_data="menu:settings")],
             [InlineKeyboardButton(text="🔗 Открыть Clash Ninja", url=_TRACKER_URL)],
         ]
     )
     return text, keyboard
+
+
+def render_time_settings(utc_offset_hours: int) -> tuple[str, InlineKeyboardMarkup]:
+    label = _utc_label(utc_offset_hours)
+    text = (
+        "⚙️ <b>Настройки времени</b>\n"
+        f"Текущий часовой пояс: <b>{label}</b>\n\n"
+        "Выберите смещение от UTC. В этом поясе отображаются дата и время завершения улучшений."
+    )
+    buttons: list[list[InlineKeyboardButton]] = []
+    offsets = list(range(-12, 15))
+    for start in range(0, len(offsets), 3):
+        row: list[InlineKeyboardButton] = []
+        for offset in offsets[start : start + 3]:
+            prefix = "✅ " if offset == utc_offset_hours else ""
+            row.append(InlineKeyboardButton(text=f"{prefix}{_utc_label(offset)}", callback_data=f"tz:{offset}"))
+        buttons.append(row)
+    buttons.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="menu:main")])
+    return text, InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def render_notification(upgrade: Upgrade, utc_offset_hours: int = 0) -> str:

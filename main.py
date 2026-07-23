@@ -21,6 +21,20 @@ from app.telegram_ui import (
 )
 
 
+class ColorFormatter(logging.Formatter):
+    COLORS = {
+        logging.DEBUG: "\033[36m",
+        logging.INFO: "\033[32m",
+        logging.WARNING: "\033[33m",
+        logging.ERROR: "\033[31m",
+        logging.CRITICAL: "\033[35m",
+    }
+    RESET = "\033[0m"
+
+    def format(self, record: logging.LogRecord) -> str:
+        return f"{self.COLORS.get(record.levelno, '')}{super().format(record)}{self.RESET}"
+
+
 async def run() -> None:
     settings = load_settings()
     storage = Storage(settings.database_path)
@@ -56,10 +70,13 @@ async def run() -> None:
 if __name__ == "__main__":
     log_directory = Path("logs")
     log_directory.mkdir(exist_ok=True)
-    formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+    formatter = logging.Formatter(
+        "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
     console = logging.StreamHandler()
     console.setLevel(logging.INFO)
-    console.setFormatter(formatter)
+    console.setFormatter(ColorFormatter(formatter._style._fmt, datefmt="%Y-%m-%d %H:%M:%S"))
     file_handler = RotatingFileHandler(log_directory / "bot.log", maxBytes=5_000_000, backupCount=5, encoding="utf-8")
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
@@ -68,7 +85,7 @@ if __name__ == "__main__":
     error_handler.setFormatter(formatter)
     logging.basicConfig(level=logging.DEBUG, handlers=[console, file_handler, error_handler])
     logging.getLogger("aiohttp").setLevel(logging.WARNING)
-    logging.getLogger("aiogram").setLevel(logging.INFO)
+    logging.getLogger("aiogram").setLevel(logging.WARNING)
     try:
         asyncio.run(run())
     except (KeyboardInterrupt, SystemExit):

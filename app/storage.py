@@ -39,6 +39,10 @@ class Storage:
                 latest_bot_message_id INTEGER NOT NULL,
                 latest_bot_kind TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS chat_settings (
+                chat_id INTEGER PRIMARY KEY,
+                utc_offset_hours INTEGER NOT NULL CHECK (utc_offset_hours BETWEEN -12 AND 14)
+            );
             """
         )
         self._connection.commit()
@@ -101,4 +105,22 @@ class Storage:
     async def remove_dashboard(self, chat_id: int) -> None:
         async with self._lock:
             self._connection.execute("DELETE FROM dashboards WHERE chat_id=?", (chat_id,))
+            self._connection.commit()
+
+    async def get_utc_offset(self, chat_id: int, default: int) -> int:
+        async with self._lock:
+            row = self._connection.execute(
+                "SELECT utc_offset_hours FROM chat_settings WHERE chat_id=?", (chat_id,)
+            ).fetchone()
+        return int(row["utc_offset_hours"]) if row else default
+
+    async def set_utc_offset(self, chat_id: int, utc_offset_hours: int) -> None:
+        if not -12 <= utc_offset_hours <= 14:
+            raise ValueError("UTC offset must be between -12 and 14")
+        async with self._lock:
+            self._connection.execute(
+                """INSERT INTO chat_settings(chat_id, utc_offset_hours) VALUES (?, ?)
+                   ON CONFLICT(chat_id) DO UPDATE SET utc_offset_hours=excluded.utc_offset_hours""",
+                (chat_id, utc_offset_hours),
+            )
             self._connection.commit()

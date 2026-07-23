@@ -26,7 +26,7 @@ class ClashNinjaClient:
     async def fetch_tracker_html(self) -> str:
         if not self._session:
             raise RuntimeError("ClashNinjaClient не запущен")
-        logger.info("Requesting Clash Ninja tracker page")
+        logger.debug("→ Запрос страницы Clash Ninja")
         async with self._session.get(
             self._settings.tracker_url,
             headers={"Cookie": self._settings.cookie_header},
@@ -35,7 +35,7 @@ class ClashNinjaClient:
             response.raise_for_status()
             html = await response.text()
             final_url = response.url
-            logger.info("Tracker page received: status=%s final_url=%s", response.status, final_url.path)
+            logger.debug("← Страница Clash Ninja: status=%s path=%s", response.status, final_url.path)
         # The authenticated tracker HTML itself includes a hidden login modal. Checking
         # text such as "Not logged in" therefore produces a false failure. A redirect
         # to /login is the reliable indication that the session cookie was rejected.
@@ -49,13 +49,13 @@ class ClashNinjaClient:
         if not self._session:
             raise RuntimeError("ClashNinjaClient не запущен")
         feed_url = urljoin(self._settings.tracker_url, "/feed/villages.json")
-        logger.info("Requesting Clash Ninja live timer feed")
+        logger.debug("→ Запрос live-таймеров Clash Ninja")
         async with self._session.get(feed_url, headers={"Cookie": self._settings.cookie_header}) as response:
             response.raise_for_status()
             if response.url.path.rstrip("/").casefold() == "/login":
                 raise RuntimeError("Clash Ninja отклонил сессию при загрузке таймеров")
             feed = await response.json(content_type=None)
-            logger.info("Live timer feed received: status=%s villages=%s", response.status, len(feed))
+            logger.debug("← Live-таймеры: status=%s аккаунтов=%s", response.status, len(feed))
         if not isinstance(feed, list):
             raise RuntimeError("Clash Ninja вернул неожиданный формат таймеров")
         return html, feed

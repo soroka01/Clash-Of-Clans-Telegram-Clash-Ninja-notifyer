@@ -35,7 +35,7 @@ class UpgradeMonitor:
             return self._latest
 
     async def poll_once(self) -> None:
-        logger.info("Starting Clash Ninja polling cycle")
+        logger.debug("Starting Clash Ninja polling cycle")
         html, feed = await self._client.fetch_tracker_data()
         current = parse_tracker_html(html, feed)
         previous = await self._storage.load_snapshot()
@@ -53,7 +53,7 @@ class UpgradeMonitor:
         await self._storage.save_snapshot(current)
         async with self._snapshot_lock:
             self._latest = current
-        logger.info("Tracker updated: %s villages, %s active upgrades", len(current.villages), len(current.upgrades))
+        logger.info("✓ Clash Ninja обновлён — аккаунтов: %s, улучшений: %s", len(current.villages), len(current.upgrades))
 
     def _completed(self, previous: Snapshot, current: Snapshot) -> list[Upgrade]:
         active_now = {upgrade.key for upgrade in current.upgrades}

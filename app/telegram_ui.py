@@ -10,7 +10,7 @@ from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 
 from app.monitor import UpgradeMonitor
-from app.presentation import render_dashboard, render_main_menu, render_notification
+from app.presentation import render_dashboard, render_main_menu, render_notification, render_time_settings
 from app.storage import Storage
 
 logger = logging.getLogger(__name__)
@@ -31,11 +31,12 @@ class DashboardService:
         self._monitor = monitor
         self._utc_offset_hours = utc_offset_hours
 
-    async def _payload(self, view: str) -> tuple[str, object]:
-        return render_dashboard(await self._monitor.latest_snapshot(), view, self._utc_offset_hours)
+    async def _payload(self, chat_id: int, view: str) -> tuple[str, object]:
+        offset = await self._storage.get_utc_offset(chat_id, self._utc_offset_hours)
+        return render_dashboard(await self._monitor.latest_snapshot(), view, offset)
 
     async def send_dashboard(self, message: Message, view: str = "all") -> None:
-        text, keyboard = await self._payload(view)
+        text, keyboard = await self._payload(message.chat.id, view)
         sent = await message.answer(text, reply_markup=keyboard)
         await self._storage.upsert_dashboard(sent.chat.id, sent.message_id, view)
         logger.info("Dashboard sent: chat=%s message=%s view=%s", sent.chat.id, sent.message_id, view)
@@ -47,7 +48,7 @@ class DashboardService:
         logger.info("Main menu sent: chat=%s message=%s", sent.chat.id, sent.message_id)
 
     async def edit_dashboard(self, chat_id: int, message_id: int, view: str) -> bool:
-        text, keyboard = await self._payload(view)
+        text, keyboard = await self._payload(chat_id, view)
         try:
             await self._bot.edit_message_text(
                 text=text,
@@ -77,6 +78,27 @@ class DashboardService:
             return False
         await self._storage.update_dashboard_view(chat_id, "main")
         logger.debug("Main menu edited: chat=%s message=%s", chat_id, message_id)
+        return True
+
+    async def send_time_settings(self, message: Message) -> None:
+        offset = await self._storage.get_utc_offset(message.chat.id, self._utc_offset_hours)
+        text, keyboard = render_time_settings(offset)
+        sent = await message.answer(text, reply_markup=keyboard)
+        await self._storage.upsert_dashboard(sent.chat.id, sent.message_id, "settings")
+        logger.info("Time settings sent: chat=%s offset=%s", sent.chat.id, offset)
+
+    async def edit_time_settings(self, chat_id: int, message_id: int) -> bool:
+        offset = await self._storage.get_utc_offset(chat_id, self._utc_offset_hours)
+        text, keyboard = render_time_settings(offset)
+        try:
+            await self._bot.edit_message_text(text=text, chat_id=chat_id, message_id=message_id, reply_markup=keyboard)
+        except TelegramBadRequest as error:
+            if "message is not modified" not in str(error).lower():
+                logger.warning("Could not edit time settings %s/%s: %s", chat_id, message_id, error)
+                return False
+        except TelegramForbiddenError:
+            return False
+        await self._storage.update_dashboard_view(chat_id, "settings")
         return True
 
     @staticmethod
@@ -114,9 +136,31 @@ class DashboardService:
         logger.info("Menu click created a new main menu: %s", _actor_label(callback))
         await self.send_main_menu(callback.message)
 
+    async def handle_time_settings(self, callback: CallbackQuery) -> None:
+        if not callback.message:
+            return
+        state = await self._storage.get_dashboard(callback.message.chat.id)
+        message_id = callback.message.message_id
+        if self._can_edit(state, message_id) and await self.edit_time_settings(callback.message.chat.id, message_id):
+            logger.info("Menu click opened time settings: %s", _actor_label(callback))
+            return
+        logger.info("Menu click created time settings: %s", _actor_label(callback))
+        await self.send_time_settings(callback.message)
+
+    async def set_time_zone(self, callback: CallbackQuery, utc_offset_hours: int) -> None:
+        if not callback.message:
+            return
+        chat_id = callback.message.chat.id
+        await self._storage.set_utc_offset(chat_id, utc_offset_hours)
+        logger.info("Timezone changed: %s chat=%s offset=UTC%+d", _actor_label(callback), chat_id, utc_offset_hours)
+        state = await self._storage.get_dashboard(chat_id)
+        if self._can_edit(state, callback.message.message_id) and await self.edit_time_settings(chat_id, callback.message.message_id):
+            return
+        await self.send_time_settings(callback.message)
+
     async def refresh_open_dashboards(self) -> None:
         for state in await self._storage.dashboards():
-            if state.view == "main":
+            if state.view in {"main", "settings"}:
                 continue
             ok = await self.edit_dashboard(state.chat_id, state.message_id, state.view)
             if not ok:
@@ -128,12 +172,13 @@ class NotificationService:
         self._bot = bot
         self._storage = storage
         self._chat_ids = chat_ids
-        self._utc_offset_hours = utc_offset_hours
+        self._default_utc_offset_hours = utc_offset_hours
 
     async def send(self, upgrade) -> None:  # Upgrade type kept import-free for a narrow delivery layer.
         for chat_id in self._chat_ids:
             try:
-                message = await self._bot.send_message(chat_id, render_notification(upgrade, self._utc_offset_hours))
+                offset = await self._storage.get_utc_offset(chat_id, self._default_utc_offset_hours)
+                message = await self._bot.send_message(chat_id, render_notification(upgrade, offset))
                 await self._storage.mark_notification(chat_id, message.message_id)
                 logger.info("Notification sent: chat=%s message=%s entity=%s", chat_id, message.message_id, upgrade.entity)
             except TelegramForbiddenError:
@@ -182,8 +227,26 @@ def make_router(dashboard: DashboardService, authorized_user_ids: frozenset[int]
         await callback.answer()
         if action == "upgrades":
             await dashboard.handle_callback(callback, "all")
+        elif action == "settings":
+            await dashboard.handle_time_settings(callback)
         elif action == "main":
             await dashboard.handle_main_menu(callback)
+
+    @router.callback_query(lambda query: query.data and query.data.startswith("tz:"))
+    async def choose_time_zone(callback: CallbackQuery) -> None:
+        if not allowed(callback):
+            logger.warning("Unauthorized timezone callback ignored: %s", _actor_label(callback))
+            await callback.answer("Нет доступа", show_alert=True)
+            return
+        try:
+            offset = int(callback.data.removeprefix("tz:"))
+            if not -12 <= offset <= 14:
+                raise ValueError
+        except ValueError:
+            await callback.answer("Некорректный часовой пояс", show_alert=True)
+            return
+        await callback.answer(f"Установлен UTC{offset:+d}")
+        await dashboard.set_time_zone(callback, offset)
 
     return router
 
