@@ -1,0 +1,13 @@
+{
+  "bot_token": "PUT_TELEGRAM_BOT_TOKEN_HERE",
+  "authorized_user_ids": [123456789],
+  "notification_chat_ids": [123456789],
+  "poll_interval_seconds": 60,
+  "dashboard_refresh_seconds": 10,
+  "database_path": "data/clash_ninja_bot.sqlite3",
+  "clash_ninja": {
+    "tracker_url": "https://www.clash.ninja/upgrade-tracker",
+    "cookie_header": "PUT_FULL_COOKIE_HEADER_FROM_LOGGED_IN_CLASH_NINJA_HERE",
+    "request_timeout_seconds": 30
+  }
+}
