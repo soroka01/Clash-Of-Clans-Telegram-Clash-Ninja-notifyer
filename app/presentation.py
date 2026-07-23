@@ -15,6 +15,7 @@ _CATEGORY_META = {
     "pet": ("🐾", "Pet House"),
     "helper": ("🧑‍🔧", "Помощники"),
 }
+_TRACKER_URL = "https://www.clash.ninja/upgrade-tracker"
 
 
 def _remaining(upgrade: Upgrade) -> str:
@@ -34,13 +35,15 @@ def _upgrade_line(upgrade: Upgrade, prefix: str) -> str:
     return f"{prefix}◦ <b>{escape(upgrade.entity)}</b> <code>{escape(upgrade.level)}</code> · ⏳ <b>{_remaining(upgrade)}</b>"
 
 
-def _village_block(name: str, upgrades: list[Upgrade]) -> str:
+def _village_block(village_id: str, name: str, upgrades: list[Upgrade]) -> str:
+    village_url = f"{_TRACKER_URL}/{escape(village_id, quote=True)}/home"
+    village_title = f'<a href="{village_url}">🏰 <b>{escape(name)}</b></a>'
     if not upgrades:
-        return f"🏰 <b>{escape(name)}</b>\n└ ✨ <i>Нет текущих улучшений</i>"
+        return f"{village_title}\n└ ✨ <i>Нет текущих улучшений</i>"
     grouped: dict[str, list[Upgrade]] = defaultdict(list)
     for upgrade in upgrades:
         grouped[upgrade.category].append(upgrade)
-    lines = [f"🏰 <b>{escape(name)}</b> <i>· {len(upgrades)} в работе</i>"]
+    lines = [f"{village_title} <i>· {len(upgrades)} в работе</i>"]
     active_categories = [category for category in ("builder", "lab", "pet", "helper") if grouped.get(category)]
     for index, category in enumerate(active_categories):
         items = grouped[category]
@@ -60,19 +63,19 @@ def render_dashboard(snapshot: Snapshot, view: str) -> tuple[str, InlineKeyboard
         by_village[upgrade.village_id].append(upgrade)
 
     if selected_id and selected_id in villages:
-        body = _village_block(villages[selected_id], by_village[selected_id])
-        title = "⚔️ <b>Текущие улучшения</b>"
+        body = _village_block(selected_id, villages[selected_id], by_village[selected_id])
+        title = f'⚔️ <a href="{_TRACKER_URL}"><b>Текущие улучшения</b></a>'
         subtitle = f"<i>Аккаунт: {escape(villages[selected_id])}</i>"
     else:
-        title = "⚔️ <b>Текущие улучшения</b>"
+        title = f'⚔️ <a href="{_TRACKER_URL}"><b>Текущие улучшения</b></a>'
         subtitle = f"<i>Все аккаунты · {len(villages)}</i>"
-        body = "\n\n".join(_village_block(name, by_village[village_id]) for village_id, name in villages.items())
+        body = "\n\n".join(_village_block(village_id, name, by_village[village_id]) for village_id, name in villages.items())
         view = "all"
     if not villages:
         body = "Данные ещё загружаются."
 
-    updated = snapshot.fetched_at.astimezone(timezone.utc).strftime("%H:%M:%S UTC")
-    text = f"{title}\n{subtitle}\n🕒 <code>{updated}</code> · автообновление <b>каждые 10 сек.</b>\n\n{body}"
+    updated = snapshot.fetched_at.astimezone(timezone.utc).strftime("%H:%M:%S")
+    text = f"{title}\n{subtitle}\n🕒 <code>{updated} UTC</code>\n\n{body}"
     # Telegram allows at most 4096 characters. Preserve the keyboard even for large accounts.
     if len(text) > 4096:
         text = text[:4050] + "\n\n<i>Список сокращён: откройте отдельный аккаунт.</i>"
