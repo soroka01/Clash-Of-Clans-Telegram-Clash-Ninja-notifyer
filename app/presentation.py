@@ -16,8 +16,9 @@ _CATEGORY_META = {
     "helper": ("🧑‍🔧", "Помощники"),
 }
 _TRACKER_URL = "https://www.clash.ninja/upgrade-tracker"
-# iOS deep link: opens Clash of Clans itself, without navigating to a settings screen.
-_OPEN_GAME_URL = "clashofclans://"
+# Telegram only accepts HTTP(S) links in inline buttons.  This official Supercell
+# Universal Link opens Clash of Clans on iOS instead of being rejected by Telegram.
+_OPEN_GAME_URL = "https://link.clashofclans.com/en/?action=OpenMoreSettings"
 
 
 def _utc_zone(utc_offset_hours: int) -> timezone:
