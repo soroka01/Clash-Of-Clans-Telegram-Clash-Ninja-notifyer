@@ -20,6 +20,16 @@ def _clean(value: str) -> str:
     return " ".join(value.split())
 
 
+def _level_text(cell: Tag) -> str:
+    """Keep the visual level transition that is represented by an icon in HTML."""
+    text = _clean(cell.get_text(" ", strip=True))
+    has_arrow = bool(cell.select_one("i.fa-arrow-right, i[class*='arrow-right']"))
+    values = re.findall(r"\d+", text)
+    if has_arrow and len(values) >= 2:
+        return f"{values[0]} → {values[-1]}"
+    return text
+
+
 def _village_name(village: Tag) -> str:
     heading = village.find("h2", recursive=False)
     if not heading:
@@ -86,7 +96,7 @@ def _rows_from_village(
             if len(cells) < 3:
                 continue
             entity = _clean(cells[0].get_text(" ", strip=True))
-            level = _clean(cells[1].get_text(" ", strip=True))
+            level = _level_text(cells[1])
             if not entity or not level:
                 continue
             category = _category_for(table, entity)
