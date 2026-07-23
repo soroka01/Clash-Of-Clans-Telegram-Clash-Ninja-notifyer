@@ -16,7 +16,8 @@ _CATEGORY_META = {
     "helper": ("🧑‍🔧", "Помощники"),
 }
 _TRACKER_URL = "https://www.clash.ninja/upgrade-tracker"
-_OPEN_GAME_URL = "https://www.clash.ninja/dl/oms"
+# iOS deep link: opens Clash of Clans itself, without navigating to a settings screen.
+_OPEN_GAME_URL = "clashofclans://"
 
 
 def _utc_zone(utc_offset_hours: int) -> timezone:

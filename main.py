@@ -71,7 +71,7 @@ if __name__ == "__main__":
     log_directory = Path("logs")
     log_directory.mkdir(exist_ok=True)
     formatter = logging.Formatter(
-        "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
+        "%(asctime)s | %(levelname)-7s | %(name)-15s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
     console = logging.StreamHandler()
