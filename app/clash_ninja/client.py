@@ -28,6 +28,10 @@ class ClashNinjaClient:
         ) as response:
             response.raise_for_status()
             html = await response.text()
-        if ">Login<" in html or "Not logged in" in html:
+            final_url = response.url
+        # The authenticated tracker HTML itself includes a hidden login modal. Checking
+        # text such as "Not logged in" therefore produces a false failure. A redirect
+        # to /login is the reliable indication that the session cookie was rejected.
+        if final_url.path.rstrip("/").casefold() == "/login":
             raise RuntimeError("Clash Ninja отклонил сессию: обновите cookie_header в config.json")
         return html
