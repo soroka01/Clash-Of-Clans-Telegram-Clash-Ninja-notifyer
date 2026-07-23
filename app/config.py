@@ -19,6 +19,7 @@ class Settings:
     notification_chat_ids: tuple[int, ...]
     poll_interval_seconds: int
     dashboard_refresh_seconds: int
+    utc_offset_hours: int
     database_path: Path
     clash_ninja: ClashNinjaSettings
 
@@ -43,12 +44,17 @@ def load_settings(path: str | Path = "config.json") -> Settings:
     if not ninja.get("cookie_header") or ninja["cookie_header"].startswith("PUT_"):
         raise RuntimeError("Укажите clash_ninja.cookie_header в config.json")
 
+    utc_offset_hours = int(raw.get("utc_offset_hours", 0))
+    if not -12 <= utc_offset_hours <= 14:
+        raise RuntimeError("utc_offset_hours должен быть целым числом от -12 до 14")
+
     return Settings(
         bot_token=raw["bot_token"],
         authorized_user_ids=frozenset(map(int, raw["authorized_user_ids"])),
         notification_chat_ids=tuple(map(int, raw["notification_chat_ids"])),
         poll_interval_seconds=max(30, int(raw.get("poll_interval_seconds", 60))),
         dashboard_refresh_seconds=max(10, int(raw.get("dashboard_refresh_seconds", 10))),
+        utc_offset_hours=utc_offset_hours,
         database_path=Path(raw.get("database_path", "data/clash_ninja_bot.sqlite3")),
         clash_ninja=ClashNinjaSettings(
             tracker_url=ninja.get("tracker_url", "https://www.clash.ninja/upgrade-tracker"),

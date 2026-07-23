@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from html import escape
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -18,6 +18,14 @@ _CATEGORY_META = {
 _TRACKER_URL = "https://www.clash.ninja/upgrade-tracker"
 
 
+def _utc_zone(utc_offset_hours: int) -> timezone:
+    return timezone(timedelta(hours=utc_offset_hours))
+
+
+def _utc_label(utc_offset_hours: int) -> str:
+    return f"UTC{utc_offset_hours:+d}"
+
+
 def _remaining(upgrade: Upgrade) -> str:
     if not upgrade.finish_at:
         return "время неизвестно"
@@ -31,11 +39,15 @@ def _remaining(upgrade: Upgrade) -> str:
     return " ".join(parts)
 
 
-def _upgrade_line(upgrade: Upgrade, prefix: str) -> str:
-    return f"{prefix}◦ <b>{escape(upgrade.entity)}</b> <code>{escape(upgrade.level)}</code> · ⏳ <b>{_remaining(upgrade)}</b>"
+def _upgrade_line(upgrade: Upgrade, prefix: str, utc_offset_hours: int) -> str:
+    finished_at = upgrade.finish_at.astimezone(_utc_zone(utc_offset_hours)).strftime("%d.%m · %H:%M")
+    return (
+        f"{prefix}◦ <b>{escape(upgrade.entity)}</b> <code>{escape(upgrade.level)}</code>\n"
+        f"{prefix}  ⏳ <b>{_remaining(upgrade)}</b> · 🏁 <code>{finished_at}</code>"
+    )
 
 
-def _village_block(village_id: str, name: str, upgrades: list[Upgrade]) -> str:
+def _village_block(village_id: str, name: str, upgrades: list[Upgrade], utc_offset_hours: int) -> str:
     village_url = f"{_TRACKER_URL}/{escape(village_id, quote=True)}/home"
     village_title = f'<a href="{village_url}">🏰 <b>{escape(name)}</b></a>'
     if not upgrades:
@@ -51,11 +63,14 @@ def _village_block(village_id: str, name: str, upgrades: list[Upgrade]) -> str:
         is_last = index == len(active_categories) - 1
         lines.append(f"{'└' if is_last else '├'} {icon} <b>{title}</b> <i>({len(items)})</i>")
         prefix = "   " if is_last else "│  "
-        lines.extend(_upgrade_line(item, prefix) for item in sorted(items, key=lambda item: item.finish_at or datetime.max.replace(tzinfo=timezone.utc)))
+        lines.extend(
+            _upgrade_line(item, prefix, utc_offset_hours)
+            for item in sorted(items, key=lambda item: item.finish_at or datetime.max.replace(tzinfo=timezone.utc))
+        )
     return "\n".join(lines)
 
 
-def render_dashboard(snapshot: Snapshot, view: str) -> tuple[str, InlineKeyboardMarkup]:
+def render_dashboard(snapshot: Snapshot, view: str, utc_offset_hours: int = 0) -> tuple[str, InlineKeyboardMarkup]:
     villages = dict(snapshot.villages)
     selected_id = view.removeprefix("v:") if view.startswith("v:") else None
     by_village: dict[str, list[Upgrade]] = defaultdict(list)
@@ -63,19 +78,22 @@ def render_dashboard(snapshot: Snapshot, view: str) -> tuple[str, InlineKeyboard
         by_village[upgrade.village_id].append(upgrade)
 
     if selected_id and selected_id in villages:
-        body = _village_block(selected_id, villages[selected_id], by_village[selected_id])
+        body = _village_block(selected_id, villages[selected_id], by_village[selected_id], utc_offset_hours)
         title = f'⚔️ <a href="{_TRACKER_URL}"><b>Текущие улучшения</b></a>'
         subtitle = f"<i>Аккаунт: {escape(villages[selected_id])}</i>"
     else:
         title = f'⚔️ <a href="{_TRACKER_URL}"><b>Текущие улучшения</b></a>'
         subtitle = f"<i>Все аккаунты · {len(villages)}</i>"
-        body = "\n\n".join(_village_block(village_id, name, by_village[village_id]) for village_id, name in villages.items())
+        body = "\n\n".join(
+            _village_block(village_id, name, by_village[village_id], utc_offset_hours)
+            for village_id, name in villages.items()
+        )
         view = "all"
     if not villages:
         body = "Данные ещё загружаются."
 
-    updated = snapshot.fetched_at.astimezone(timezone.utc).strftime("%H:%M:%S")
-    text = f"{title}\n{subtitle}\n🕒 <code>{updated} UTC</code>\n\n{body}"
+    updated = snapshot.fetched_at.astimezone(_utc_zone(utc_offset_hours)).strftime("%H:%M:%S")
+    text = f"{title}\n{subtitle}\n🕒 <code>{updated} {_utc_label(utc_offset_hours)}</code>\n\n{body}"
     # Telegram allows at most 4096 characters. Preserve the keyboard even for large accounts.
     if len(text) > 4096:
         text = text[:4050] + "\n\n<i>Список сокращён: откройте отдельный аккаунт.</i>"
@@ -86,21 +104,39 @@ def render_dashboard(snapshot: Snapshot, view: str) -> tuple[str, InlineKeyboard
     else:
         for village_id, name in villages.items():
             buttons.append([InlineKeyboardButton(text=f"🏰 {name}"[:50], callback_data=f"view:v:{village_id}")])
+    buttons.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="menu:main")])
     return text, InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def render_notification(upgrade: Upgrade) -> str:
+def render_main_menu() -> tuple[str, InlineKeyboardMarkup]:
+    text = (
+        "⚔️ <b>Clash Ninja Notifier</b>\n"
+        "<i>Улучшения, таймеры и уведомления ваших аккаунтов Clash of Clans.</i>\n\n"
+        "Выберите действие ниже."
+    )
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📋 Текущие улучшения", callback_data="menu:upgrades")],
+            [InlineKeyboardButton(text="🔗 Открыть Clash Ninja", url=_TRACKER_URL)],
+        ]
+    )
+    return text, keyboard
+
+
+def render_notification(upgrade: Upgrade, utc_offset_hours: int = 0) -> str:
     entity = escape(upgrade.helper_name or upgrade.entity)
     village = escape(upgrade.village_name)
+    finished_at = upgrade.finish_at.astimezone(_utc_zone(utc_offset_hours)).strftime("%d.%m.%Y · %H:%M") if upgrade.finish_at else "—"
+    timing = f"\n🕒 <code>{finished_at} {_utc_label(utc_offset_hours)}</code>"
     if upgrade.is_helper:
         return (
             "🧑‍🔧 <b>Помощник свободен!</b>\n"
             f"🏰 <b>{village}</b>\n"
-            f"└ {entity} <code>{escape(upgrade.level)}</code> завершил своё улучшение."
+            f"└ {entity} <code>{escape(upgrade.level)}</code> завершил своё улучшение.{timing}"
         )
     icon, title = _CATEGORY_META.get(upgrade.category, ("✅", "Улучшение"))
     return (
         "✅ <b>Улучшение завершено!</b>\n"
         f"🏰 <b>{village}</b>\n"
-        f"└ {icon} <b>{entity}</b> <code>{escape(upgrade.level)}</code> · {title}"
+        f"└ {icon} <b>{entity}</b> <code>{escape(upgrade.level)}</code> · {title}{timing}"
     )

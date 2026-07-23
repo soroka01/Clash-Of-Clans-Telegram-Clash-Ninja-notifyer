@@ -10,7 +10,7 @@ page, shows active upgrades, and sends completion notifications.
 - Completion notifications for buildings, Laboratory research, and Pet House upgrades.
 - Separate alerts when Lab Assistant, Builder's Apprentice, or Alchemist are
   released by completing an actual upgrade. Their cooldown expiration is ignored.
-- `/start` menu with an all-accounts view and per-account views.
+- `/start` main menu with an all-accounts view and per-account views.
 - The dashboard message is edited every 10 seconds, keeping countdowns current
   without sending extra messages.
 - SQLite snapshots persist across restarts.
@@ -20,6 +20,8 @@ page, shows active upgrades, and sends completion notifications.
 1. Copy [config.example.json](config.example.json) to `config.json`.
 2. Fill in the Telegram token, allowed Telegram IDs, notification chat IDs, and
    an authenticated Clash Ninja `Cookie` request-header value.
+   Set `utc_offset_hours` to the desired offset from UTC (for example, `5` for
+   `UTC+5`); dashboard and notification times use this timezone.
 3. Run [start.bat](start.bat). It creates `.venv`, updates packaging tools in
    that virtual environment, installs dependencies, and starts the bot.
 

@@ -4,6 +4,7 @@
   "notification_chat_ids": [123456789],
   "poll_interval_seconds": 60,
   "dashboard_refresh_seconds": 10,
+  "utc_offset_hours": 5,
   "database_path": "data/clash_ninja_bot.sqlite3",
   "clash_ninja": {
     "tracker_url": "https://www.clash.ninja/upgrade-tracker",
