@@ -225,7 +225,7 @@ def make_router(dashboard: DashboardService, authorized_user_ids: frozenset[int]
             await callback.answer("Нет доступа", show_alert=True)
             return
         view = callback.data.removeprefix("view:")
-        logger.info("Menu callback received: %s view=%s", _actor_label(callback), view)
+        logger.debug("Menu callback received: %s view=%s", _actor_label(callback), view)
         await callback.answer()
         await dashboard.handle_callback(callback, view)
 
@@ -236,7 +236,7 @@ def make_router(dashboard: DashboardService, authorized_user_ids: frozenset[int]
             await callback.answer("Нет доступа", show_alert=True)
             return
         action = callback.data.removeprefix("menu:")
-        logger.info("Main menu callback received: %s action=%s", _actor_label(callback), action)
+        logger.debug("Main menu callback received: %s action=%s", _actor_label(callback), action)
         await callback.answer()
         if action == "upgrades":
             await dashboard.handle_callback(callback, "all")

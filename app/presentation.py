@@ -16,6 +16,7 @@ _CATEGORY_META = {
     "helper": ("🧑‍🔧", "Помощники"),
 }
 _TRACKER_URL = "https://www.clash.ninja/upgrade-tracker"
+_OPEN_GAME_URL = "https://www.clash.ninja/dl/oms"
 
 
 def _utc_zone(utc_offset_hours: int) -> timezone:
@@ -128,6 +129,7 @@ def render_dashboard(snapshot: Snapshot, view: str, utc_offset_hours: int = 0) -
     else:
         for village_id, name in villages.items():
             buttons.append([InlineKeyboardButton(text=f"🏰 {name}"[:50], callback_data=f"view:v:{village_id}")])
+    buttons.append([InlineKeyboardButton(text="🎮 Открыть Clash of Clans", url=_OPEN_GAME_URL)])
     buttons.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="menu:main")])
     return text, InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -142,6 +144,7 @@ def render_main_menu() -> tuple[str, InlineKeyboardMarkup]:
         inline_keyboard=[
             [InlineKeyboardButton(text="📋 Текущие улучшения", callback_data="menu:upgrades")],
             [InlineKeyboardButton(text="⚙️ Настройки времени", callback_data="menu:settings")],
+            [InlineKeyboardButton(text="🎮 Открыть Clash of Clans", url=_OPEN_GAME_URL)],
             [InlineKeyboardButton(text="🔗 Открыть Clash Ninja", url=_TRACKER_URL)],
         ]
     )
