@@ -57,7 +57,28 @@ class UpgradeMonitor:
         await self._storage.save_snapshot(current)
         async with self._snapshot_lock:
             self._latest = current
-        logger.info("✓ Clash Ninja обновлён — аккаунтов: %s, улучшений: %s", len(current.villages), len(current.upgrades))
+        logger.info(
+            "✓ Clash Ninja обновлён — аккаунтов: %s, улучшений: %s · ближайшее: %s",
+            len(current.villages),
+            len(current.upgrades),
+            self._nearest_upgrade(current.upgrades),
+        )
+
+    @staticmethod
+    def _nearest_upgrade(upgrades: tuple[Upgrade, ...]) -> str:
+        now = datetime.now(timezone.utc)
+        timed_upgrades = [upgrade for upgrade in upgrades if upgrade.finish_at]
+        if not timed_upgrades:
+            return "нет таймеров"
+
+        nearest = min(timed_upgrades, key=lambda upgrade: upgrade.finish_at or datetime.max.replace(tzinfo=timezone.utc))
+        assert nearest.finish_at is not None
+        remaining_seconds = max(0, int((nearest.finish_at - now).total_seconds()))
+        days, remaining_seconds = divmod(remaining_seconds, 86_400)
+        hours, remaining_seconds = divmod(remaining_seconds, 3_600)
+        minutes = remaining_seconds // 60
+        parts = ([f"{days}д"] if days else []) + ([f"{hours}ч"] if hours or days else []) + [f"{minutes}м"]
+        return f"{nearest.village_name} — {nearest.entity} {nearest.level} · ⏳ {' '.join(parts)}"
 
     def _completed(self, previous: Snapshot, current: Snapshot) -> list[Upgrade]:
         active_now = {upgrade.key for upgrade in current.upgrades}
