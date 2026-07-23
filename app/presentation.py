@@ -158,7 +158,7 @@ def render_dashboard(snapshot: Snapshot, view: str, utc_offset_hours: int = 0) -
     buttons: list[list[InlineKeyboardButton]] = []
     if view != "all":
         buttons.append([InlineKeyboardButton(text="← 📋 Все аккаунты", callback_data="view:all")])
-    else:
+    elif len(villages) > 1:
         for village_id, name in villages.items():
             buttons.append([InlineKeyboardButton(text=f"🏰 {name}"[:50], callback_data=f"view:v:{village_id}")])
     buttons.append([InlineKeyboardButton(text="🎮 Открыть Clash of Clans", url=_OPEN_GAME_URL)])
