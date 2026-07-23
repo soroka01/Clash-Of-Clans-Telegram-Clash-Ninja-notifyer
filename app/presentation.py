@@ -16,6 +16,12 @@ _CATEGORY_META = {
     "helper": ("🧑‍🔧", "Помощники"),
 }
 _TRACKER_URL = "https://www.clash.ninja/upgrade-tracker"
+_OPEN_GAME_URL = "https://link.clashofclans.com/en/"
+_HELPER_ICONS = {
+    "Lab Assistant": "🧑‍🔬",
+    "Builder's Apprentice": "👷",
+    "Alchemist": "⚗️",
+}
 
 
 def _utc_zone(utc_offset_hours: int) -> timezone:
@@ -39,20 +45,36 @@ def _remaining(upgrade: Upgrade) -> str:
     return " ".join(parts)
 
 
-def _upgrade_line(upgrade: Upgrade, prefix: str, utc_offset_hours: int) -> str:
+def _upgrade_line(upgrade: Upgrade, prefix: str, utc_offset_hours: int, helper_icons: list[str]) -> str:
     finished_at = upgrade.finish_at.astimezone(_utc_zone(utc_offset_hours)).strftime("%d.%m · %H:%M")
+    helper_prefix = f"{' '.join(helper_icons)} " if helper_icons else ""
     return (
-        f"{prefix}◦ <b>{escape(upgrade.entity)}</b> <code>{escape(upgrade.level)}</code>\n"
+        f"{prefix}◦ {helper_prefix}<b>{escape(upgrade.entity)}</b> <code>{escape(upgrade.level)}</code>\n"
         f"{prefix}  ⏳ <b>{_remaining(upgrade)}</b> · 🏁 {finished_at}"
     )
 
 
-def _village_block(village_id: str, name: str, upgrades: list[Upgrade], utc_offset_hours: int) -> str:
+def _village_block(
+    village_id: str,
+    name: str,
+    upgrades: list[Upgrade],
+    helpers: list[HelperStatus],
+    utc_offset_hours: int,
+) -> str:
     village_url = f"{_TRACKER_URL}/{escape(village_id, quote=True)}/home"
     village_title = f'🏰 <b>{escape(name)}</b>'
     village_link = f'<a href="{village_url}">🔗 Открыть</a>'
+    assigned_icons: dict[str, list[str]] = defaultdict(list)
+    for helper in helpers:
+        if helper.state == "assigned" and helper.target:
+            assigned_icons[helper.target].append(_HELPER_ICONS.get(helper.helper_name, "🤖"))
+
     if not upgrades:
-        return f"{village_title} · {village_link}\n└ ✨ <i>Нет текущих улучшений</i>"
+        lines = [f"{village_title} · {village_link}", "✨ <i>Нет текущих улучшений</i>"]
+        helper_block = _helpers_line(helpers)
+        if helper_block:
+            lines.append(helper_block)
+        return "\n".join(lines)
     grouped: dict[str, list[Upgrade]] = defaultdict(list)
     for upgrade in upgrades:
         grouped[upgrade.category].append(upgrade)
@@ -64,25 +86,26 @@ def _village_block(village_id: str, name: str, upgrades: list[Upgrade], utc_offs
         lines.append(f"{icon} <b>{title}</b> <i>({len(items)})</i>")
         prefix = "  "
         lines.extend(
-            _upgrade_line(item, prefix, utc_offset_hours)
+            _upgrade_line(
+                item,
+                prefix,
+                utc_offset_hours,
+                assigned_icons.get(f"{item.entity} {item.level}", []),
+            )
             for item in sorted(items, key=lambda item: item.finish_at or datetime.max.replace(tzinfo=timezone.utc))
         )
+    helper_block = _helpers_line(helpers)
+    if helper_block:
+        lines.append(helper_block)
     return "\n".join(lines)
 
 
-def _helpers_line(helpers: list[HelperStatus], utc_offset_hours: int) -> str:
-    if not helpers:
+def _helpers_line(helpers: list[HelperStatus]) -> str:
+    available = [helper for helper in helpers if helper.state == "available"]
+    if not available:
         return ""
-    statuses: list[str] = []
-    for helper in helpers:
-        if helper.state == "available":
-            statuses.append(f"🟢 <b>{escape(helper.helper_name)}</b>")
-        elif helper.state == "assigned":
-            statuses.append(f"🟠 <b>{escape(helper.helper_name)}</b> → {escape(helper.target or 'улучшение')}")
-        else:
-            until = helper.until.astimezone(_utc_zone(utc_offset_hours)).strftime("%d.%m %H:%M") if helper.until else "—"
-            statuses.append(f"🟡 <b>{escape(helper.helper_name)}</b> · КД до {until}")
-    return "🤖 " + " · ".join(statuses)
+    statuses = [f"  • {_HELPER_ICONS.get(helper.helper_name, '🤖')} <b>{escape(helper.helper_name)}</b>" for helper in available]
+    return "🤖 <b>Свободные помощники</b>\n" + "\n".join(statuses)
 
 
 def render_dashboard(snapshot: Snapshot, view: str, utc_offset_hours: int = 0) -> tuple[str, InlineKeyboardMarkup]:
@@ -96,10 +119,13 @@ def render_dashboard(snapshot: Snapshot, view: str, utc_offset_hours: int = 0) -
         helpers_by_village[helper.village_id].append(helper)
 
     if selected_id and selected_id in villages:
-        body = _village_block(selected_id, villages[selected_id], by_village[selected_id], utc_offset_hours)
-        helper_line = _helpers_line(helpers_by_village[selected_id], utc_offset_hours)
-        if helper_line:
-            body = f"{body}\n{helper_line}"
+        body = _village_block(
+            selected_id,
+            villages[selected_id],
+            by_village[selected_id],
+            helpers_by_village[selected_id],
+            utc_offset_hours,
+        )
         title = "⚔️ <b>Текущие улучшения</b>"
         subtitle = f"<i>Аккаунт: {escape(villages[selected_id])}</i>"
     else:
@@ -107,9 +133,15 @@ def render_dashboard(snapshot: Snapshot, view: str, utc_offset_hours: int = 0) -
         subtitle = f"<i>Все аккаунты · {len(villages)}</i>"
         blocks: list[str] = []
         for village_id, name in villages.items():
-            block = _village_block(village_id, name, by_village[village_id], utc_offset_hours)
-            helper_line = _helpers_line(helpers_by_village[village_id], utc_offset_hours)
-            blocks.append(f"{block}\n{helper_line}" if helper_line else block)
+            blocks.append(
+                _village_block(
+                    village_id,
+                    name,
+                    by_village[village_id],
+                    helpers_by_village[village_id],
+                    utc_offset_hours,
+                )
+            )
         body = "\n\n".join(blocks)
         view = "all"
     if not villages:
@@ -128,6 +160,7 @@ def render_dashboard(snapshot: Snapshot, view: str, utc_offset_hours: int = 0) -
     else:
         for village_id, name in villages.items():
             buttons.append([InlineKeyboardButton(text=f"🏰 {name}"[:50], callback_data=f"view:v:{village_id}")])
+    buttons.append([InlineKeyboardButton(text="🎮 Открыть Clash of Clans", url=_OPEN_GAME_URL)])
     buttons.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="menu:main")])
     return text, InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -142,6 +175,7 @@ def render_main_menu() -> tuple[str, InlineKeyboardMarkup]:
         inline_keyboard=[
             [InlineKeyboardButton(text="📋 Текущие улучшения", callback_data="menu:upgrades")],
             [InlineKeyboardButton(text="⚙️ Настройки времени", callback_data="menu:settings")],
+            [InlineKeyboardButton(text="🎮 Открыть Clash of Clans", url=_OPEN_GAME_URL)],
             [InlineKeyboardButton(text="🔗 Открыть Clash Ninja", url=_TRACKER_URL)],
         ]
     )
