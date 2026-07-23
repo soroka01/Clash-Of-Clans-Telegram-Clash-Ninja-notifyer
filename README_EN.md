@@ -24,6 +24,10 @@ page, shows active upgrades, and sends completion notifications.
    `UTC+5`); dashboard and notification times use this timezone.
 3. Run [start.bat](start.bat). It creates `.venv`, updates packaging tools in
    that virtual environment, installs dependencies, and starts the bot.
+   Before launching, it safely checks GitHub and applies fast-forward updates.
+   `config.json`, the SQLite database in `data/`, and logs are ignored by Git
+   and are never overwritten. If tracked project files have local edits, the
+   update is skipped to preserve them.
 
 `cookie_header` is a session secret. In Chrome/Edge-based browsers, log in to
 Clash Ninja, open Upgrade Tracker, press `F12` → **Network**, reload the page,

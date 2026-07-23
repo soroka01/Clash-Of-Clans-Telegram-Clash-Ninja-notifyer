@@ -17,6 +17,7 @@ _CATEGORY_META = {
 }
 _TRACKER_URL = "https://www.clash.ninja/upgrade-tracker"
 _OPEN_GAME_URL = "https://link.clashofclans.com/en/"
+_REPOSITORY_URL = "https://github.com/soroka01/Clash-Of-Clans-Telegram-Clash-Ninja-notifyer"
 _HELPER_ICONS = {
     "Lab Assistant": "🧑‍🔬",
     "Builder's Apprentice": "👷",
@@ -177,6 +178,7 @@ def render_main_menu() -> tuple[str, InlineKeyboardMarkup]:
             [InlineKeyboardButton(text="⚙️ Настройки времени", callback_data="menu:settings")],
             [InlineKeyboardButton(text="🎮 Открыть Clash of Clans", url=_OPEN_GAME_URL)],
             [InlineKeyboardButton(text="🔗 Открыть Clash Ninja", url=_TRACKER_URL)],
+            [InlineKeyboardButton(text="💻 GitHub · исходный код", url=_REPOSITORY_URL)],
         ]
     )
     return text, keyboard

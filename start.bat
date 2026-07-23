@@ -4,6 +4,35 @@ cd /d "%~dp0"
 chcp 65001 >nul 2>&1
 set "PYTHONUTF8=1"
 
+rem Update only tracked project files. config.json and data/ are ignored by Git.
+where git >nul 2>&1
+if errorlevel 1 (
+    echo [UPDATE] Git was not found. Starting the installed version.
+) else if not exist ".git" (
+    echo [UPDATE] This folder is not a Git repository. Starting the installed version.
+) else (
+    set "HAS_LOCAL_CHANGES="
+    for /f "delims=" %%A in ('git status --porcelain') do set "HAS_LOCAL_CHANGES=1"
+    if defined HAS_LOCAL_CHANGES (
+        echo [UPDATE] Local tracked changes found. Update skipped to keep them safe.
+    ) else (
+        echo [UPDATE] Checking GitHub for updates...
+        git fetch origin main
+        if errorlevel 1 (
+            echo [UPDATE] Could not contact GitHub. Starting the installed version.
+        ) else (
+            git diff --quiet HEAD origin/main
+            if errorlevel 1 (
+                echo [UPDATE] Installing the latest version...
+                git pull --ff-only origin main
+                if errorlevel 1 echo [UPDATE] Update failed. Starting the installed version.
+            ) else (
+                echo [UPDATE] The bot is already up to date.
+            )
+        )
+    )
+)
+
 set "PYTHON_CMD=.venv\Scripts\python.exe"
 if not exist "%PYTHON_CMD%" (
     set "BOOTSTRAP_PY="
