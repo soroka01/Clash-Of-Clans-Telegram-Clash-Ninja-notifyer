@@ -69,7 +69,14 @@ async def run() -> None:
     bot = Bot(settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     notifier = NotificationService(bot, storage, settings.notification_chat_ids, settings.utc_offset_hours)
     monitor = UpgradeMonitor(client, storage, settings.poll_interval_seconds, notifier.send)
-    dashboard = DashboardService(bot, storage, monitor, settings.utc_offset_hours)
+    await monitor.restore_cached_snapshot()
+    dashboard = DashboardService(
+        bot,
+        storage,
+        monitor,
+        settings.utc_offset_hours,
+        settings.notification_chat_ids,
+    )
     dispatcher = Dispatcher()
     dispatcher.include_router(make_router(dashboard, settings.authorized_user_ids))
     refresh_stop = asyncio.Event()
@@ -81,6 +88,7 @@ async def run() -> None:
 
     try:
         await bot.delete_webhook(drop_pending_updates=False)
+        await dashboard.restore_menus_after_restart()
         await dispatcher.start_polling(bot, allowed_updates=dispatcher.resolve_used_update_types())
     finally:
         monitor.stop()

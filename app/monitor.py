@@ -35,6 +35,14 @@ class UpgradeMonitor:
         async with self._snapshot_lock:
             return self._latest
 
+    async def restore_cached_snapshot(self) -> None:
+        """Make the last known data available while the first network poll is running."""
+        snapshot = await self._storage.load_snapshot()
+        if snapshot is None:
+            return
+        async with self._snapshot_lock:
+            self._latest = snapshot
+
     async def poll_once(self) -> None:
         logger.debug("Starting Clash Ninja polling cycle")
         html, feed = await self._client.fetch_tracker_data()

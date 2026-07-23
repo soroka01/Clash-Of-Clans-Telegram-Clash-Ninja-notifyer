@@ -18,7 +18,7 @@ from app.presentation import (
     render_notification,
     render_time_settings,
 )
-from app.storage import Storage
+from app.storage import DashboardState, Storage
 
 logger = logging.getLogger(__name__)
 
@@ -32,27 +32,50 @@ def _actor_label(message: Message | CallbackQuery) -> str:
 
 
 class DashboardService:
-    def __init__(self, bot: Bot, storage: Storage, monitor: UpgradeMonitor, utc_offset_hours: int) -> None:
+    def __init__(
+        self,
+        bot: Bot,
+        storage: Storage,
+        monitor: UpgradeMonitor,
+        utc_offset_hours: int,
+        startup_menu_chat_ids: tuple[int, ...],
+    ) -> None:
         self._bot = bot
         self._storage = storage
         self._monitor = monitor
         self._utc_offset_hours = utc_offset_hours
+        self._startup_menu_chat_ids = startup_menu_chat_ids
 
     async def _payload(self, chat_id: int, view: str) -> tuple[str, object]:
         offset = await self._storage.get_utc_offset(chat_id, self._utc_offset_hours)
         return render_dashboard(await self._monitor.latest_snapshot(), view, offset)
 
-    async def send_dashboard(self, message: Message, view: str = "all") -> None:
-        text, keyboard = await self._payload(message.chat.id, view)
-        sent = await message.answer(text, reply_markup=keyboard)
+    async def _send(self, chat_id: int, text: str, keyboard: object, view: str, kind: str) -> bool:
+        try:
+            sent = await self._bot.send_message(chat_id, text, reply_markup=keyboard)
+        except TelegramForbiddenError:
+            logger.warning("Could not send %s: bot is blocked in chat %s", kind, chat_id)
+            return False
+        except TelegramBadRequest as error:
+            logger.warning("Could not send %s to chat %s: %s", kind, chat_id, error)
+            return False
         await self._storage.upsert_dashboard(sent.chat.id, sent.message_id, view)
-        logger.info("Dashboard sent: chat=%s message=%s view=%s", sent.chat.id, sent.message_id, view)
+        logger.info("%s sent: chat=%s message=%s view=%s", kind.capitalize(), sent.chat.id, sent.message_id, view)
+        return True
 
-    async def send_main_menu(self, message: Message) -> None:
+    async def send_dashboard_to_chat(self, chat_id: int, view: str = "all") -> bool:
+        text, keyboard = await self._payload(chat_id, view)
+        return await self._send(chat_id, text, keyboard, view, "dashboard")
+
+    async def send_dashboard(self, message: Message, view: str = "all") -> bool:
+        return await self.send_dashboard_to_chat(message.chat.id, view)
+
+    async def send_main_menu_to_chat(self, chat_id: int) -> bool:
         text, keyboard = render_main_menu()
-        sent = await message.answer(text, reply_markup=keyboard)
-        await self._storage.upsert_dashboard(sent.chat.id, sent.message_id, "main")
-        logger.info("Main menu sent: chat=%s message=%s", sent.chat.id, sent.message_id)
+        return await self._send(chat_id, text, keyboard, "main", "main menu")
+
+    async def send_main_menu(self, message: Message) -> bool:
+        return await self.send_main_menu_to_chat(message.chat.id)
 
     async def edit_dashboard(self, chat_id: int, message_id: int, view: str) -> bool:
         text, keyboard = await self._payload(chat_id, view)
@@ -87,12 +110,13 @@ class DashboardService:
         logger.debug("Main menu edited: chat=%s message=%s", chat_id, message_id)
         return True
 
-    async def send_time_settings(self, message: Message) -> None:
-        offset = await self._storage.get_utc_offset(message.chat.id, self._utc_offset_hours)
+    async def send_time_settings_to_chat(self, chat_id: int) -> bool:
+        offset = await self._storage.get_utc_offset(chat_id, self._utc_offset_hours)
         text, keyboard = render_time_settings(offset)
-        sent = await message.answer(text, reply_markup=keyboard)
-        await self._storage.upsert_dashboard(sent.chat.id, sent.message_id, "settings")
-        logger.info("Time settings sent: chat=%s offset=%s", sent.chat.id, offset)
+        return await self._send(chat_id, text, keyboard, "settings", "time settings")
+
+    async def send_time_settings(self, message: Message) -> bool:
+        return await self.send_time_settings_to_chat(message.chat.id)
 
     async def edit_time_settings(self, chat_id: int, message_id: int) -> bool:
         offset = await self._storage.get_utc_offset(chat_id, self._utc_offset_hours)
@@ -171,7 +195,40 @@ class DashboardService:
                 continue
             ok = await self.edit_dashboard(state.chat_id, state.message_id, state.view)
             if not ok:
+                if not await self.send_dashboard_to_chat(state.chat_id, state.view):
+                    await self._storage.remove_dashboard(state.chat_id)
+
+    async def _restore_saved_menu(self, state: DashboardState) -> bool:
+        if state.view == "main":
+            return await self.edit_main_menu(state.chat_id, state.message_id)
+        if state.view == "settings":
+            return await self.edit_time_settings(state.chat_id, state.message_id)
+        return await self.edit_dashboard(state.chat_id, state.message_id, state.view)
+
+    async def _send_view_to_chat(self, chat_id: int, view: str) -> bool:
+        if view == "main":
+            return await self.send_main_menu_to_chat(chat_id)
+        if view == "settings":
+            return await self.send_time_settings_to_chat(chat_id)
+        return await self.send_dashboard_to_chat(chat_id, view)
+
+    async def restore_menus_after_restart(self) -> None:
+        """Restore each saved menu, replacing a deleted or uneditable message."""
+        states = await self._storage.dashboards()
+        known_chats = {state.chat_id for state in states}
+        for state in states:
+            if await self._restore_saved_menu(state):
+                logger.info("Saved menu restored: chat=%s message=%s view=%s", state.chat_id, state.message_id, state.view)
+                continue
+            logger.info("Saved menu is unavailable; sending a replacement: chat=%s view=%s", state.chat_id, state.view)
+            if not await self._send_view_to_chat(state.chat_id, state.view):
                 await self._storage.remove_dashboard(state.chat_id)
+
+        for chat_id in self._startup_menu_chat_ids:
+            if chat_id in known_chats:
+                continue
+            logger.info("No saved menu found; sending main menu: chat=%s", chat_id)
+            await self.send_main_menu_to_chat(chat_id)
 
 
 class NotificationService:

@@ -96,6 +96,8 @@ Send `/start` to open the main menu.
 
 An assigned helper appears directly beside the upgrade it is working on, for example `🧑‍🔬 Freeze Spell`. A free helper appears in the **🤖 Available helpers** block and produces a separate notification. A helper merely finishing cooldown is not reported as an upgrade-completion release.
 
+After a restart, the bot restores the last saved menu by its message ID. If the message was deleted or Telegram no longer allows it to be edited, the bot automatically sends a replacement with the same view. If no menu exists yet, a main menu is sent to chats listed in `notification_chat_ids`.
+
 ## Automatic updates
 
 `start.bat` checks for updates every time it starts.
