@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import sys
+from ctypes import byref, c_uint, windll
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -31,8 +34,31 @@ class ColorFormatter(logging.Formatter):
     }
     RESET = "\033[0m"
 
+    def __init__(self, *args: object, use_colors: bool = True, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)
+        self._use_colors = use_colors
+
     def format(self, record: logging.LogRecord) -> str:
-        return f"{self.COLORS.get(record.levelno, '')}{super().format(record)}{self.RESET}"
+        message = super().format(record)
+        if not self._use_colors:
+            return message
+        return f"{self.COLORS.get(record.levelno, '')}{message}{self.RESET}"
+
+
+def _console_supports_colors() -> bool:
+    """Enable ANSI on supported Windows consoles; otherwise keep logs clean."""
+    if not sys.stdout.isatty():
+        return False
+    if os.name != "nt":
+        return True
+    try:
+        stdout_handle = windll.kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+        mode = c_uint()
+        if not windll.kernel32.GetConsoleMode(stdout_handle, byref(mode)):
+            return False
+        return bool(windll.kernel32.SetConsoleMode(stdout_handle, mode.value | 0x0004))
+    except (AttributeError, OSError):
+        return False
 
 
 async def run() -> None:
@@ -76,7 +102,13 @@ if __name__ == "__main__":
     )
     console = logging.StreamHandler()
     console.setLevel(logging.INFO)
-    console.setFormatter(ColorFormatter(formatter._style._fmt, datefmt="%Y-%m-%d %H:%M:%S"))
+    console.setFormatter(
+        ColorFormatter(
+            formatter._style._fmt,
+            datefmt="%Y-%m-%d %H:%M:%S",
+            use_colors=_console_supports_colors(),
+        )
+    )
     file_handler = RotatingFileHandler(log_directory / "bot.log", maxBytes=5_000_000, backupCount=5, encoding="utf-8")
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
