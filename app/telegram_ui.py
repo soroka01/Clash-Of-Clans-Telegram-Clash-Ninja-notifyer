@@ -10,7 +10,14 @@ from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 
 from app.monitor import UpgradeMonitor
-from app.presentation import render_dashboard, render_main_menu, render_notification, render_time_settings
+from app.models import HelperStatus, Upgrade
+from app.presentation import (
+    render_dashboard,
+    render_helper_available_notification,
+    render_main_menu,
+    render_notification,
+    render_time_settings,
+)
 from app.storage import Storage
 
 logger = logging.getLogger(__name__)
@@ -174,13 +181,19 @@ class NotificationService:
         self._chat_ids = chat_ids
         self._default_utc_offset_hours = utc_offset_hours
 
-    async def send(self, upgrade) -> None:  # Upgrade type kept import-free for a narrow delivery layer.
+    async def send(self, event: Upgrade | HelperStatus) -> None:
         for chat_id in self._chat_ids:
             try:
                 offset = await self._storage.get_utc_offset(chat_id, self._default_utc_offset_hours)
-                message = await self._bot.send_message(chat_id, render_notification(upgrade, offset))
+                text = (
+                    render_helper_available_notification(event, offset)
+                    if isinstance(event, HelperStatus)
+                    else render_notification(event, offset)
+                )
+                message = await self._bot.send_message(chat_id, text)
                 await self._storage.mark_notification(chat_id, message.message_id)
-                logger.info("Notification sent: chat=%s message=%s entity=%s", chat_id, message.message_id, upgrade.entity)
+                label = event.helper_name if isinstance(event, HelperStatus) else event.entity
+                logger.info("Notification sent: chat=%s message=%s item=%s", chat_id, message.message_id, label)
             except TelegramForbiddenError:
                 logger.warning("Bot is blocked in notification chat %s", chat_id)
             except TelegramBadRequest:

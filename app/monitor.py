@@ -7,11 +7,12 @@ from typing import Awaitable, Callable
 
 from app.clash_ninja.client import ClashNinjaClient
 from app.clash_ninja.parser import parse_tracker_html
-from app.models import Snapshot, Upgrade
+from app.models import HelperStatus, Snapshot, Upgrade
 from app.storage import Storage
 
 logger = logging.getLogger(__name__)
-NotificationCallback = Callable[[Upgrade], Awaitable[None]]
+NotificationEvent = Upgrade | HelperStatus
+NotificationCallback = Callable[[NotificationEvent], Awaitable[None]]
 
 
 class UpgradeMonitor:
@@ -50,6 +51,9 @@ class UpgradeMonitor:
                     finished.is_helper,
                 )
                 await self._notify(finished)
+            for helper in self._released_helpers(previous, current):
+                logger.info("Helper became available: village=%s helper=%s", helper.village_name, helper.helper_name)
+                await self._notify(helper)
         await self._storage.save_snapshot(current)
         async with self._snapshot_lock:
             self._latest = current
@@ -67,6 +71,17 @@ class UpgradeMonitor:
             and upgrade.village_id in present_villages
             and upgrade.finish_at is not None
             and upgrade.finish_at <= now + tolerance
+        ]
+
+    @staticmethod
+    def _released_helpers(previous: Snapshot, current: Snapshot) -> list[HelperStatus]:
+        before = {helper.key: helper for helper in previous.helpers}
+        return [
+            helper
+            for helper in current.helpers
+            if helper.state == "available"
+            and helper.key in before
+            and before[helper.key].state == "assigned"
         ]
 
     async def run(self) -> None:

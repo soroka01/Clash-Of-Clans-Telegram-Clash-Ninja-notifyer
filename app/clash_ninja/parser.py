@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from bs4 import BeautifulSoup, Tag
 
-from app.models import HELPER_NAMES, Snapshot, Upgrade
+from app.models import HELPER_NAMES, HelperStatus, Snapshot, Upgrade
 
 
 class TrackerParseError(ValueError):
@@ -118,6 +118,7 @@ def _rows_from_village(
                     entity=entity,
                     level=level,
                     finish_at=finish_at,
+                    source_id=timer_id,
                 )
             )
     return upgrades
@@ -145,6 +146,38 @@ def _feed_finishes(feed: list[dict] | None) -> dict[str, datetime]:
     return finishes
 
 
+def _helper_statuses(feed: list[dict] | None, upgrades: list[Upgrade], fetched_at: datetime) -> list[HelperStatus]:
+    """Get actual helper assignment state from the live Clash Ninja feed."""
+    upgrades_by_source = {upgrade.source_id: upgrade for upgrade in upgrades if upgrade.source_id}
+    fields = (("la", "Lab Assistant"), ("ba", "Builder's Apprentice"), ("a", "Alchemist"))
+    statuses: list[HelperStatus] = []
+    for village in feed or []:
+        village_id, village_name, helpers = village.get("tws"), village.get("vn"), village.get("h")
+        if not village_id or not village_name or not isinstance(helpers, dict):
+            continue
+        for field, helper_name in fields:
+            data = helpers.get(field)
+            if not isinstance(data, dict):
+                continue
+            availability = data.get("a") if isinstance(data.get("a"), dict) else {}
+            try:
+                until = datetime.fromtimestamp(int(availability["te"]), tz=timezone.utc)
+            except (KeyError, TypeError, ValueError, OSError):
+                until = None
+            target_data = data.get("t") if isinstance(data.get("t"), dict) else None
+            if target_data:
+                source_id = f"{village_id}-{target_data.get('eid')}-{target_data.get('i', 0)}-rem"
+                upgrade = upgrades_by_source.get(source_id)
+                target = f"{upgrade.entity} {upgrade.level}" if upgrade else "активное улучшение"
+                state = "assigned"
+            elif until and until > fetched_at:
+                target, state = None, "cooldown"
+            else:
+                target, state = None, "available"
+            statuses.append(HelperStatus(village_id, village_name, helper_name, state, target, until))
+    return statuses
+
+
 def parse_tracker_html(html: str, feed: list[dict] | None = None, now: datetime | None = None) -> Snapshot:
     """Parse the logged-in Upgrade Tracker overview without relying on fragile IDs."""
     soup = BeautifulSoup(html, "html.parser")
@@ -160,8 +193,10 @@ def parse_tracker_html(html: str, feed: list[dict] | None = None, now: datetime 
         upgrades.extend(_rows_from_village(village, village_id, name, feed_finishes))
     if not villages:
         raise TrackerParseError("На странице не найдены деревни. Возможно, изменилась разметка или истекла сессия.")
+    fetched_at = now or datetime.now(timezone.utc)
     return Snapshot(
         villages=tuple(villages),
         upgrades=tuple(upgrades),
-        fetched_at=now or datetime.now(timezone.utc),
+        helpers=tuple(_helper_statuses(feed, upgrades, fetched_at)),
+        fetched_at=fetched_at,
     )

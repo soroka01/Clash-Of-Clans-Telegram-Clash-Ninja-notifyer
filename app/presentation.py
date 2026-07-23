@@ -6,7 +6,7 @@ from html import escape
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from app.models import Snapshot, Upgrade
+from app.models import HelperStatus, Snapshot, Upgrade
 
 
 _CATEGORY_META = {
@@ -43,7 +43,7 @@ def _upgrade_line(upgrade: Upgrade, prefix: str, utc_offset_hours: int) -> str:
     finished_at = upgrade.finish_at.astimezone(_utc_zone(utc_offset_hours)).strftime("%d.%m · %H:%M")
     return (
         f"{prefix}◦ <b>{escape(upgrade.entity)}</b> <code>{escape(upgrade.level)}</code>\n"
-        f"{prefix}  ⏳ <b>{_remaining(upgrade)}</b> · 🏁 <code>{finished_at}</code>"
+        f"{prefix}  ⏳ <b>{_remaining(upgrade)}</b> · 🏁 {finished_at}"
     )
 
 
@@ -58,12 +58,11 @@ def _village_block(village_id: str, name: str, upgrades: list[Upgrade], utc_offs
         grouped[upgrade.category].append(upgrade)
     lines = [f"{village_title} <i>· {len(upgrades)} в работе</i> · {village_link}"]
     active_categories = [category for category in ("builder", "lab", "pet", "helper") if grouped.get(category)]
-    for index, category in enumerate(active_categories):
+    for category in active_categories:
         items = grouped[category]
         icon, title = _CATEGORY_META[category]
-        is_last = index == len(active_categories) - 1
-        lines.append(f"{'└' if is_last else '├'} {icon} <b>{title}</b> <i>({len(items)})</i>")
-        prefix = "   " if is_last else "│  "
+        lines.append(f"{icon} <b>{title}</b> <i>({len(items)})</i>")
+        prefix = "  "
         lines.extend(
             _upgrade_line(item, prefix, utc_offset_hours)
             for item in sorted(items, key=lambda item: item.finish_at or datetime.max.replace(tzinfo=timezone.utc))
@@ -71,24 +70,47 @@ def _village_block(village_id: str, name: str, upgrades: list[Upgrade], utc_offs
     return "\n".join(lines)
 
 
+def _helpers_line(helpers: list[HelperStatus], utc_offset_hours: int) -> str:
+    if not helpers:
+        return ""
+    statuses: list[str] = []
+    for helper in helpers:
+        if helper.state == "available":
+            statuses.append(f"🟢 <b>{escape(helper.helper_name)}</b>")
+        elif helper.state == "assigned":
+            statuses.append(f"🟠 <b>{escape(helper.helper_name)}</b> → {escape(helper.target or 'улучшение')}")
+        else:
+            until = helper.until.astimezone(_utc_zone(utc_offset_hours)).strftime("%d.%m %H:%M") if helper.until else "—"
+            statuses.append(f"🟡 <b>{escape(helper.helper_name)}</b> · КД до {until}")
+    return "🤖 " + " · ".join(statuses)
+
+
 def render_dashboard(snapshot: Snapshot, view: str, utc_offset_hours: int = 0) -> tuple[str, InlineKeyboardMarkup]:
     villages = dict(snapshot.villages)
     selected_id = view.removeprefix("v:") if view.startswith("v:") else None
     by_village: dict[str, list[Upgrade]] = defaultdict(list)
+    helpers_by_village: dict[str, list[HelperStatus]] = defaultdict(list)
     for upgrade in snapshot.upgrades:
         by_village[upgrade.village_id].append(upgrade)
+    for helper in snapshot.helpers:
+        helpers_by_village[helper.village_id].append(helper)
 
     if selected_id and selected_id in villages:
         body = _village_block(selected_id, villages[selected_id], by_village[selected_id], utc_offset_hours)
+        helper_line = _helpers_line(helpers_by_village[selected_id], utc_offset_hours)
+        if helper_line:
+            body = f"{body}\n{helper_line}"
         title = "⚔️ <b>Текущие улучшения</b>"
         subtitle = f"<i>Аккаунт: {escape(villages[selected_id])}</i>"
     else:
         title = "⚔️ <b>Текущие улучшения</b>"
         subtitle = f"<i>Все аккаунты · {len(villages)}</i>"
-        body = "\n\n".join(
-            _village_block(village_id, name, by_village[village_id], utc_offset_hours)
-            for village_id, name in villages.items()
-        )
+        blocks: list[str] = []
+        for village_id, name in villages.items():
+            block = _village_block(village_id, name, by_village[village_id], utc_offset_hours)
+            helper_line = _helpers_line(helpers_by_village[village_id], utc_offset_hours)
+            blocks.append(f"{block}\n{helper_line}" if helper_line else block)
+        body = "\n\n".join(blocks)
         view = "all"
     if not villages:
         body = "Данные ещё загружаются."
@@ -161,4 +183,14 @@ def render_notification(upgrade: Upgrade, utc_offset_hours: int = 0) -> str:
         "✅ <b>Улучшение завершено!</b>\n"
         f"🏰 <b>{village}</b>\n"
         f"└ {icon} <b>{entity}</b> <code>{escape(upgrade.level)}</code> · {title}{timing}"
+    )
+
+
+def render_helper_available_notification(helper: HelperStatus, utc_offset_hours: int = 0) -> str:
+    now = datetime.now(_utc_zone(utc_offset_hours)).strftime("%d.%m.%Y · %H:%M")
+    return (
+        "🟢 <b>Помощник свободен!</b>\n"
+        f"🏰 <b>{escape(helper.village_name)}</b>\n"
+        f"└ <b>{escape(helper.helper_name)}</b> больше не прикреплён к улучшению.\n"
+        f"🕒 <code>{now} {_utc_label(utc_offset_hours)}</code>"
     )

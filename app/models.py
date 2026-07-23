@@ -25,6 +25,7 @@ class Upgrade:
     entity: str
     level: str
     finish_at: datetime | None
+    source_id: str | None = None
 
     @property
     def key(self) -> str:
@@ -54,6 +55,38 @@ class Upgrade:
             entity=data["entity"],
             level=data["level"],
             finish_at=datetime.fromisoformat(finish_at) if finish_at else None,
+            source_id=data.get("source_id"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class HelperStatus:
+    village_id: str
+    village_name: str
+    helper_name: str
+    state: str  # available | assigned | cooldown
+    target: str | None = None
+    until: datetime | None = None
+
+    @property
+    def key(self) -> str:
+        return f"{self.village_id}|{self.helper_name}"
+
+    def to_dict(self) -> dict[str, Any]:
+        result = asdict(self)
+        result["until"] = self.until.isoformat() if self.until else None
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "HelperStatus":
+        until = data.get("until")
+        return cls(
+            village_id=data["village_id"],
+            village_name=data["village_name"],
+            helper_name=data["helper_name"],
+            state=data["state"],
+            target=data.get("target"),
+            until=datetime.fromisoformat(until) if until else None,
         )
 
 
@@ -61,17 +94,19 @@ class Upgrade:
 class Snapshot:
     villages: tuple[tuple[str, str], ...]
     upgrades: tuple[Upgrade, ...]
+    helpers: tuple[HelperStatus, ...]
     fetched_at: datetime
 
     @classmethod
     def empty(cls) -> "Snapshot":
-        return cls((), (), datetime.now(timezone.utc))
+        return cls((), (), (), datetime.now(timezone.utc))
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "fetched_at": self.fetched_at.isoformat(),
             "villages": list(self.villages),
             "upgrades": [upgrade.to_dict() for upgrade in self.upgrades],
+            "helpers": [helper.to_dict() for helper in self.helpers],
         }
 
     @classmethod
@@ -79,5 +114,6 @@ class Snapshot:
         return cls(
             villages=tuple(tuple(item) for item in data.get("villages", [])),
             upgrades=tuple(Upgrade.from_dict(item) for item in data["upgrades"]),
+            helpers=tuple(HelperStatus.from_dict(item) for item in data.get("helpers", [])),
             fetched_at=datetime.fromisoformat(data["fetched_at"]),
         )
