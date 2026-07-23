@@ -178,7 +178,7 @@ def render_main_menu() -> tuple[str, InlineKeyboardMarkup]:
             [InlineKeyboardButton(text="⚙️ Настройки времени", callback_data="menu:settings")],
             [InlineKeyboardButton(text="🎮 Открыть Clash of Clans", url=_OPEN_GAME_URL)],
             [InlineKeyboardButton(text="🔗 Открыть Clash Ninja", url=_TRACKER_URL)],
-            [InlineKeyboardButton(text="💻 GitHub · исходный код", url=_REPOSITORY_URL)],
+            [InlineKeyboardButton(text="💻 GitHub", url=_REPOSITORY_URL)],
         ]
     )
     return text, keyboard
