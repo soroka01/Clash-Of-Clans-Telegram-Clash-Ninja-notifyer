@@ -16,6 +16,14 @@ from app.storage import Storage
 logger = logging.getLogger(__name__)
 
 
+def _actor_label(message: Message | CallbackQuery) -> str:
+    user = message.from_user
+    if not user:
+        return "unknown-user"
+    username = f"@{user.username}" if user.username else "without-username"
+    return f"id={user.id} {username} name={user.full_name!r}"
+
+
 class DashboardService:
     def __init__(self, bot: Bot, storage: Storage, monitor: UpgradeMonitor) -> None:
         self._bot = bot
@@ -29,6 +37,7 @@ class DashboardService:
         text, keyboard = await self._payload(view)
         sent = await message.answer(text, reply_markup=keyboard)
         await self._storage.upsert_dashboard(sent.chat.id, sent.message_id, view)
+        logger.info("Dashboard sent: chat=%s message=%s view=%s", sent.chat.id, sent.message_id, view)
 
     async def edit_dashboard(self, chat_id: int, message_id: int, view: str) -> bool:
         text, keyboard = await self._payload(view)
@@ -46,6 +55,7 @@ class DashboardService:
         except TelegramForbiddenError:
             return False
         await self._storage.update_dashboard_view(chat_id, view)
+        logger.debug("Dashboard edited: chat=%s message=%s view=%s", chat_id, message_id, view)
         return True
 
     async def handle_callback(self, callback: CallbackQuery, view: str) -> None:
@@ -63,7 +73,9 @@ class DashboardService:
             and state.latest_bot_message_id == message_id
         )
         if can_edit and await self.edit_dashboard(chat_id, message_id, view):
+            logger.info("Menu click edited dashboard: %s view=%s", _actor_label(callback), view)
             return
+        logger.info("Menu click created a new dashboard: %s view=%s", _actor_label(callback), view)
         await self.send_dashboard(callback.message, view)
 
     async def refresh_open_dashboards(self) -> None:
@@ -84,6 +96,7 @@ class NotificationService:
             try:
                 message = await self._bot.send_message(chat_id, render_notification(upgrade))
                 await self._storage.mark_notification(chat_id, message.message_id)
+                logger.info("Notification sent: chat=%s message=%s entity=%s", chat_id, message.message_id, upgrade.entity)
             except TelegramForbiddenError:
                 logger.warning("Bot is blocked in notification chat %s", chat_id)
             except TelegramBadRequest:
@@ -100,15 +113,19 @@ def make_router(dashboard: DashboardService, authorized_user_ids: frozenset[int]
     @router.message(Command("start", "menu", "status"))
     async def command_menu(message: Message) -> None:
         if not allowed(message):
+            logger.warning("Unauthorized command ignored: %s chat=%s", _actor_label(message), message.chat.id)
             return
+        logger.info("Menu command received: %s chat=%s command=%r", _actor_label(message), message.chat.id, message.text)
         await dashboard.send_dashboard(message)
 
     @router.callback_query(lambda query: query.data and query.data.startswith("view:"))
     async def choose_view(callback: CallbackQuery) -> None:
         if not allowed(callback):
+            logger.warning("Unauthorized callback ignored: %s chat=%s data=%s", _actor_label(callback), callback.message.chat.id if callback.message else "?", callback.data)
             await callback.answer("Нет доступа", show_alert=True)
             return
         view = callback.data.removeprefix("view:")
+        logger.info("Menu callback received: %s view=%s", _actor_label(callback), view)
         await callback.answer()
         await dashboard.handle_callback(callback, view)
 

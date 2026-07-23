@@ -35,12 +35,20 @@ class UpgradeMonitor:
             return self._latest
 
     async def poll_once(self) -> None:
-        html = await self._client.fetch_tracker_html()
-        current = parse_tracker_html(html)
+        logger.info("Starting Clash Ninja polling cycle")
+        html, feed = await self._client.fetch_tracker_data()
+        current = parse_tracker_html(html, feed)
         previous = await self._storage.load_snapshot()
 
         if previous:
             for finished in self._completed(previous, current):
+                logger.info(
+                    "Completion detected: village=%s entity=%s level=%s helper=%s",
+                    finished.village_name,
+                    finished.entity,
+                    finished.level,
+                    finished.is_helper,
+                )
                 await self._notify(finished)
         await self._storage.save_snapshot(current)
         async with self._snapshot_lock:

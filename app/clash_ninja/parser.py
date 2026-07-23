@@ -48,7 +48,9 @@ def _category_for(table: Tag, entity: str) -> str | None:
     return None
 
 
-def _finish_at(row: Tag) -> datetime | None:
+def _finish_at(row: Tag, feed_finish_at: datetime | None = None) -> datetime | None:
+    if feed_finish_at:
+        return feed_finish_at
     progress = row.select_one("[role='progressbar'][title]")
     if progress:
         raw = progress.get("title", "").strip()
@@ -68,7 +70,12 @@ def _finish_at(row: Tag) -> datetime | None:
         return None
 
 
-def _rows_from_village(village: Tag, village_id: str, village_name: str) -> list[Upgrade]:
+def _rows_from_village(
+    village: Tag,
+    village_id: str,
+    village_name: str,
+    feed_finishes: dict[str, datetime],
+) -> list[Upgrade]:
     upgrades: list[Upgrade] = []
     for table in village.find_all("table"):
         headers = [_clean(cell.get_text(" ", strip=True)).casefold() for cell in table.find_all("th")]
@@ -85,6 +92,14 @@ def _rows_from_village(village: Tag, village_id: str, village_name: str) -> list
             category = _category_for(table, entity)
             if not category:
                 continue
+            timer = cells[2].find(id=True)
+            timer_id = timer.get("id") if timer else None
+            finish_at = _finish_at(row, feed_finishes.get(timer_id or ""))
+            # Current Clash Ninja markup leaves timer cells blank and fills them
+            # client-side from /feed/villages.json. Do not present a phantom
+            # "active upgrade" if its live feed record is absent.
+            if not finish_at:
+                continue
             upgrades.append(
                 Upgrade(
                     village_id=village_id,
@@ -92,24 +107,47 @@ def _rows_from_village(village: Tag, village_id: str, village_name: str) -> list
                     category=category,
                     entity=entity,
                     level=level,
-                    finish_at=_finish_at(row),
+                    finish_at=finish_at,
                 )
             )
     return upgrades
 
 
-def parse_tracker_html(html: str, now: datetime | None = None) -> Snapshot:
+def _feed_finishes(feed: list[dict] | None) -> dict[str, datetime]:
+    """Map DOM timer IDs (tag-eid-index-rem) to completion timestamps."""
+    finishes: dict[str, datetime] = {}
+    for village in feed or []:
+        village_id = village.get("tws")
+        if not village_id:
+            continue
+        for village_type in ("hb", "bb"):
+            upgrades = village.get(village_type, {})
+            for kind in ("b", "l", "p"):
+                entries = upgrades.get(kind)
+                if isinstance(entries, dict):
+                    entries = [entries]
+                for entry in entries or []:
+                    try:
+                        key = f"{village_id}-{int(entry['eid'])}-{int(entry.get('i', 0))}-rem"
+                        finishes[key] = datetime.fromtimestamp(int(entry["cd"]) / 1000, tz=timezone.utc)
+                    except (KeyError, TypeError, ValueError, OSError):
+                        continue
+    return finishes
+
+
+def parse_tracker_html(html: str, feed: list[dict] | None = None, now: datetime | None = None) -> Snapshot:
     """Parse the logged-in Upgrade Tracker overview without relying on fragile IDs."""
     soup = BeautifulSoup(html, "html.parser")
     villages: list[tuple[str, str]] = []
     upgrades: list[Upgrade] = []
+    feed_finishes = _feed_finishes(feed)
     for village in soup.select("div.village-overview[id]"):
         village_id = village.get("id", "")
         if not village_id or village_id == "overall-timers":
             continue
         name = _village_name(village)
         villages.append((village_id, name))
-        upgrades.extend(_rows_from_village(village, village_id, name))
+        upgrades.extend(_rows_from_village(village, village_id, name, feed_finishes))
     if not villages:
         raise TrackerParseError("На странице не найдены деревни. Возможно, изменилась разметка или истекла сессия.")
     return Snapshot(

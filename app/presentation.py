@@ -72,7 +72,6 @@ def render_dashboard(snapshot: Snapshot, view: str) -> tuple[str, InlineKeyboard
     else:
         for village_id, name in villages.items():
             buttons.append([InlineKeyboardButton(text=name[:50], callback_data=f"view:v:{village_id}")])
-    buttons.append([InlineKeyboardButton(text="↻ Обновить", callback_data=f"view:{view}")])
     return text, InlineKeyboardMarkup(inline_keyboard=buttons)
 
 

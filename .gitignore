@@ -14,6 +14,7 @@ __pycache__/
 
 # Local bot state
 data/
+logs/
 *.sqlite3
 *.db
 
