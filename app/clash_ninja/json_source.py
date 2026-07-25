@@ -94,7 +94,8 @@ class JsonAccountSource:
 
     async def fetch_snapshot(self) -> Snapshot:
         if not self._directory.exists():
-            raise RuntimeError(f"Папка JSON-аккаунтов не найдена: {self._directory}")
+            self._directory.mkdir(parents=True, exist_ok=True)
+            raise RuntimeError(f"Папка JSON-аккаунтов создана: {self._directory}. Добавьте туда файлы аккаунтов")
         snapshots: list[Snapshot] = []
         for path in sorted(self._directory.glob("*.json")):
             try:
