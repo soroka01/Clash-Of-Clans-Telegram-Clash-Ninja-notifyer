@@ -13,6 +13,7 @@ from app.monitor import UpgradeMonitor
 from app.models import HelperStatus, Upgrade
 from app.presentation import (
     render_dashboard,
+    render_alert_keyboard,
     render_helper_available_notification,
     render_main_menu,
     render_notification,
@@ -51,6 +52,7 @@ class DashboardService:
         return render_dashboard(await self._monitor.latest_snapshot(), view, offset)
 
     async def _send(self, chat_id: int, text: str, keyboard: object, view: str, kind: str) -> bool:
+        await self.clear_alert_buttons(chat_id)
         try:
             sent = await self._bot.send_message(chat_id, text, reply_markup=keyboard)
         except TelegramForbiddenError:
@@ -62,6 +64,22 @@ class DashboardService:
         await self._storage.upsert_dashboard(sent.chat.id, sent.message_id, view)
         logger.info("%s sent: chat=%s message=%s view=%s", kind.capitalize(), sent.chat.id, sent.message_id, view)
         return True
+
+    async def clear_alert_buttons(self, chat_id: int) -> None:
+        """Remove the obsolete menu button from every tracked alert in a chat."""
+        for message_id in await self._storage.alert_message_ids(chat_id):
+            try:
+                await self._bot.edit_message_reply_markup(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    reply_markup=None,
+                )
+            except TelegramBadRequest as error:
+                if "message is not modified" not in str(error).lower():
+                    logger.debug("Could not clear alert button %s/%s: %s", chat_id, message_id, error)
+            except TelegramForbiddenError:
+                logger.debug("Could not clear alert button in chat %s: bot is blocked", chat_id)
+            await self._storage.forget_alert_message(chat_id, message_id)
 
     async def send_dashboard_to_chat(self, chat_id: int, view: str = "all") -> bool:
         text, keyboard = await self._payload(chat_id, view)
@@ -93,6 +111,7 @@ class DashboardService:
         except TelegramForbiddenError:
             return False
         await self._storage.update_dashboard_view(chat_id, view)
+        await self._storage.remember_menu_message(chat_id, message_id)
         logger.debug("Dashboard edited: chat=%s message=%s view=%s", chat_id, message_id, view)
         return True
 
@@ -107,6 +126,7 @@ class DashboardService:
         except TelegramForbiddenError:
             return False
         await self._storage.update_dashboard_view(chat_id, "main")
+        await self._storage.remember_menu_message(chat_id, message_id)
         logger.debug("Main menu edited: chat=%s message=%s", chat_id, message_id)
         return True
 
@@ -130,6 +150,7 @@ class DashboardService:
         except TelegramForbiddenError:
             return False
         await self._storage.update_dashboard_view(chat_id, "settings")
+        await self._storage.remember_menu_message(chat_id, message_id)
         return True
 
     @staticmethod
@@ -191,12 +212,27 @@ class DashboardService:
 
     async def refresh_open_dashboards(self) -> None:
         for state in await self._storage.dashboards():
-            if state.view in {"main", "settings"}:
-                continue
-            ok = await self.edit_dashboard(state.chat_id, state.message_id, state.view)
+            ok = await self._restore_saved_menu(state) if state.view in {"main", "settings"} else await self.edit_dashboard(
+                state.chat_id,
+                state.message_id,
+                state.view,
+            )
             if not ok:
-                if not await self.send_dashboard_to_chat(state.chat_id, state.view):
+                if not await self._send_view_to_chat(state.chat_id, state.view):
                     await self._storage.remove_dashboard(state.chat_id)
+
+    async def replace_menus(self, chat_id: int) -> bool:
+        """Delete tracked menu messages, then send one fresh main menu."""
+        for message_id in await self._storage.menu_message_ids(chat_id):
+            try:
+                await self._bot.delete_message(chat_id=chat_id, message_id=message_id)
+                await self._storage.forget_menu_message(chat_id, message_id)
+            except TelegramBadRequest as error:
+                logger.debug("Could not delete old menu %s/%s: %s", chat_id, message_id, error)
+            except TelegramForbiddenError:
+                logger.debug("Could not delete old menu in chat %s: bot is blocked", chat_id)
+        await self._storage.remove_dashboard(chat_id)
+        return await self.send_main_menu_to_chat(chat_id)
 
     async def _restore_saved_menu(self, state: DashboardState) -> bool:
         if state.view == "main":
@@ -247,8 +283,9 @@ class NotificationService:
                     if isinstance(event, HelperStatus)
                     else render_notification(event, offset)
                 )
-                message = await self._bot.send_message(chat_id, text)
+                message = await self._bot.send_message(chat_id, text, reply_markup=render_alert_keyboard())
                 await self._storage.mark_notification(chat_id, message.message_id)
+                await self._storage.remember_alert_message(chat_id, message.message_id)
                 label = event.helper_name if isinstance(event, HelperStatus) else event.entity
                 logger.info("Notification sent: chat=%s message=%s item=%s", chat_id, message.message_id, label)
             except TelegramForbiddenError:
@@ -301,6 +338,19 @@ def make_router(dashboard: DashboardService, authorized_user_ids: frozenset[int]
             await dashboard.handle_time_settings(callback)
         elif action == "main":
             await dashboard.handle_main_menu(callback)
+
+    @router.callback_query(lambda query: query.data == "alert:menu")
+    async def refresh_menu_from_alert(callback: CallbackQuery) -> None:
+        if not allowed(callback):
+            logger.warning("Unauthorized alert-menu callback ignored: %s", _actor_label(callback))
+            await callback.answer("Нет доступа", show_alert=True)
+            return
+        if not callback.message:
+            return
+        await callback.answer()
+        chat_id = callback.message.chat.id
+        logger.info("Alert menu refresh requested: %s chat=%s", _actor_label(callback), chat_id)
+        await dashboard.replace_menus(chat_id)
 
     @router.callback_query(lambda query: query.data and query.data.startswith("tz:"))
     async def choose_time_zone(callback: CallbackQuery) -> None:

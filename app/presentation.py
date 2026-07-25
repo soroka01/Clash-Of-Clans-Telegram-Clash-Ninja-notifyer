@@ -277,3 +277,11 @@ def render_helper_available_notification(helper: HelperStatus, utc_offset_hours:
         f"└ <b>{escape(helper.helper_name)}</b> больше не прикреплён к улучшению.\n"
         f"🕒 <code>{now} {_utc_label(utc_offset_hours)}</code>"
     )
+
+
+def render_alert_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📋 Обновить меню", callback_data="alert:menu")],
+        ]
+    )

@@ -36,6 +36,8 @@ The bot also:
 - does not treat cooldown completion alone as a helper release;
 - restricts the Telegram menu to configured user IDs;
 - sends alerts to every chat in `notification_chat_ids`;
+- adds an **📋 Refresh menu** button to alerts; it deletes tracked menus and sends one fresh menu as the latest message;
+- removes that button from older alerts after `/start`, a button click, or an automatic replacement of a deleted menu;
 - writes detailed and error-only rotating logs.
 
 ## 🏗️ Architecture

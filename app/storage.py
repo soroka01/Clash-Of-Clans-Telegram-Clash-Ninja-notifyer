@@ -43,6 +43,16 @@ class Storage:
                 chat_id INTEGER PRIMARY KEY,
                 utc_offset_hours INTEGER NOT NULL CHECK (utc_offset_hours BETWEEN -12 AND 14)
             );
+            CREATE TABLE IF NOT EXISTS menu_messages (
+                chat_id INTEGER NOT NULL,
+                message_id INTEGER NOT NULL,
+                PRIMARY KEY (chat_id, message_id)
+            );
+            CREATE TABLE IF NOT EXISTS alert_messages (
+                chat_id INTEGER NOT NULL,
+                message_id INTEGER NOT NULL,
+                PRIMARY KEY (chat_id, message_id)
+            );
             """
         )
         self._connection.commit()
@@ -76,6 +86,58 @@ class Storage:
                      latest_bot_message_id=excluded.latest_bot_message_id,
                      latest_bot_kind='dashboard'""",
                 (chat_id, message_id, view, message_id),
+            )
+            self._connection.execute(
+                "INSERT OR IGNORE INTO menu_messages(chat_id, message_id) VALUES (?, ?)",
+                (chat_id, message_id),
+            )
+            self._connection.commit()
+
+    async def remember_menu_message(self, chat_id: int, message_id: int) -> None:
+        async with self._lock:
+            self._connection.execute(
+                "INSERT OR IGNORE INTO menu_messages(chat_id, message_id) VALUES (?, ?)",
+                (chat_id, message_id),
+            )
+            self._connection.commit()
+
+    async def menu_message_ids(self, chat_id: int) -> list[int]:
+        async with self._lock:
+            rows = self._connection.execute(
+                "SELECT message_id FROM menu_messages WHERE chat_id=? ORDER BY message_id",
+                (chat_id,),
+            ).fetchall()
+        return [int(row["message_id"]) for row in rows]
+
+    async def forget_menu_message(self, chat_id: int, message_id: int) -> None:
+        async with self._lock:
+            self._connection.execute(
+                "DELETE FROM menu_messages WHERE chat_id=? AND message_id=?",
+                (chat_id, message_id),
+            )
+            self._connection.commit()
+
+    async def remember_alert_message(self, chat_id: int, message_id: int) -> None:
+        async with self._lock:
+            self._connection.execute(
+                "INSERT OR IGNORE INTO alert_messages(chat_id, message_id) VALUES (?, ?)",
+                (chat_id, message_id),
+            )
+            self._connection.commit()
+
+    async def alert_message_ids(self, chat_id: int) -> list[int]:
+        async with self._lock:
+            rows = self._connection.execute(
+                "SELECT message_id FROM alert_messages WHERE chat_id=? ORDER BY message_id",
+                (chat_id,),
+            ).fetchall()
+        return [int(row["message_id"]) for row in rows]
+
+    async def forget_alert_message(self, chat_id: int, message_id: int) -> None:
+        async with self._lock:
+            self._connection.execute(
+                "DELETE FROM alert_messages WHERE chat_id=? AND message_id=?",
+                (chat_id, message_id),
             )
             self._connection.commit()
 
