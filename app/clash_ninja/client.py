@@ -6,6 +6,7 @@ from urllib.parse import urljoin
 import aiohttp
 
 from app.config import ClashNinjaSettings
+from app.clash_ninja.parser import parse_tracker_html
 
 logger = logging.getLogger(__name__)
 
@@ -59,3 +60,7 @@ class ClashNinjaClient:
         if not isinstance(feed, list):
             raise RuntimeError("Clash Ninja вернул неожиданный формат таймеров")
         return html, feed
+
+    async def fetch_snapshot(self):
+        html, feed = await self.fetch_tracker_data()
+        return parse_tracker_html(html, feed)

@@ -4,7 +4,7 @@ cd /d "%~dp0"
 chcp 65001 >nul 2>&1
 set "PYTHONUTF8=1"
 
-rem Update only project files. config.json, .venv, data/ and logs/ stay local.
+rem Update only project files. config.json, accounts/, .venv, data/ and logs/ stay local.
 where git >nul 2>&1
 if errorlevel 1 (
     echo [UPDATE] Git was not found. Downloading the update directly from GitHub...
@@ -82,7 +82,7 @@ endlocal & exit /b %EXIT_CODE%
 set "UPDATE_TEMP=%TEMP%\clash-ninja-notifier-update-%RANDOM%%RANDOM%"
 set "UPDATE_ZIP=%UPDATE_TEMP%\main.zip"
 mkdir "%UPDATE_TEMP%" >nul 2>&1
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/soroka01/Clash-Of-Clans-Telegram-Clash-Ninja-notifyer/archive/refs/heads/main.zip' -OutFile '%UPDATE_ZIP%'; Expand-Archive -LiteralPath '%UPDATE_ZIP%' -DestinationPath '%UPDATE_TEMP%' -Force; $source = Get-ChildItem -LiteralPath '%UPDATE_TEMP%' -Directory | Select-Object -First 1; Get-ChildItem -LiteralPath $source.FullName -Force | Where-Object { $_.Name -notin @('.git', '.venv', 'config.json', '.env', 'data', 'logs') } | Copy-Item -Destination '%~dp0' -Recurse -Force"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/soroka01/Clash-Of-Clans-Telegram-Clash-Ninja-notifyer/archive/refs/heads/main.zip' -OutFile '%UPDATE_ZIP%'; Expand-Archive -LiteralPath '%UPDATE_ZIP%' -DestinationPath '%UPDATE_TEMP%' -Force; $source = Get-ChildItem -LiteralPath '%UPDATE_TEMP%' -Directory | Select-Object -First 1; Get-ChildItem -LiteralPath $source.FullName -Force | Where-Object { $_.Name -notin @('.git', '.venv', 'config.json', '.env', 'accounts', 'data', 'logs') } | Copy-Item -Destination '%~dp0' -Recurse -Force"
 if errorlevel 1 (
     echo [UPDATE] Direct update failed. Starting the installed version.
 ) else (

@@ -206,3 +206,18 @@ Distributed under the [MIT License](LICENSE).
 ---
 
 ⚔️ Current timers stay in one message; completions arrive as separate alerts.
+
+## JSON mode without Clash Ninja
+
+The bot can read the game's JSON exports directly. Set this in `config.json`:
+
+```json
+{
+  "data_source": "json",
+  "json_accounts_directory": "accounts"
+}
+```
+
+Put one JSON export per village in `accounts/`. The original export format with `timestamp`, `buildings`, `traps`, `units`, `spells`, `heroes`, `pets`, and `helpers` is supported. Add a `name` field to control the account name shown in Telegram; otherwise the filename is used. Builder Base fields (`buildings2`, `units2`, and other `2`-suffix fields) are ignored.
+
+Cookie and website access are not required in this mode. When you replace an account JSON file, the bot detects completed active timers on the next polling cycle. See [accounts/README.md](accounts/README.md) for the file layout.

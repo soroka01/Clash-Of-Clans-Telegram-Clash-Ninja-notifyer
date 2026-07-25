@@ -13,6 +13,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
 from app.clash_ninja.client import ClashNinjaClient
+from app.clash_ninja.json_source import JsonAccountSource
 from app.config import load_settings
 from app.monitor import UpgradeMonitor
 from app.storage import Storage
@@ -64,7 +65,7 @@ def _console_supports_colors() -> bool:
 async def run() -> None:
     settings = load_settings()
     storage = Storage(settings.database_path)
-    client = ClashNinjaClient(settings.clash_ninja)
+    client = ClashNinjaClient(settings.clash_ninja) if settings.data_source == "clash_ninja" and settings.clash_ninja else JsonAccountSource(settings.json_accounts_directory)
     await client.start()
     bot = Bot(settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     notifier = NotificationService(bot, storage, settings.notification_chat_ids, settings.utc_offset_hours)

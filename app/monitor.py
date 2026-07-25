@@ -5,8 +5,6 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable
 
-from app.clash_ninja.client import ClashNinjaClient
-from app.clash_ninja.parser import parse_tracker_html
 from app.models import HelperStatus, Snapshot, Upgrade
 from app.storage import Storage
 
@@ -18,7 +16,7 @@ NotificationCallback = Callable[[NotificationEvent], Awaitable[None]]
 class UpgradeMonitor:
     def __init__(
         self,
-        client: ClashNinjaClient,
+        client: object,
         storage: Storage,
         poll_interval_seconds: int,
         notify: NotificationCallback,
@@ -45,8 +43,7 @@ class UpgradeMonitor:
 
     async def poll_once(self) -> None:
         logger.debug("Starting Clash Ninja polling cycle")
-        html, feed = await self._client.fetch_tracker_data()
-        current = parse_tracker_html(html, feed)
+        current = await self._client.fetch_snapshot()
         previous = await self._storage.load_snapshot()
 
         if previous:

@@ -23,7 +23,9 @@ class Settings:
     dashboard_refresh_seconds: int
     utc_offset_hours: int
     database_path: Path
-    clash_ninja: ClashNinjaSettings
+    data_source: str
+    json_accounts_directory: Path
+    clash_ninja: ClashNinjaSettings | None
 
 
 def load_settings(path: str | Path = "config.json") -> Settings:
@@ -35,17 +37,20 @@ def load_settings(path: str | Path = "config.json") -> Settings:
     except json.JSONDecodeError as error:
         raise RuntimeError(f"Некорректный JSON в {config_path}: {error}") from error
 
-    required = ("bot_token", "authorized_user_ids", "notification_chat_ids", "clash_ninja")
+    required = ("bot_token", "authorized_user_ids", "notification_chat_ids")
     missing = [key for key in required if key not in raw]
     if missing:
         raise RuntimeError(f"В {config_path} отсутствуют поля: {', '.join(missing)}")
 
-    ninja = raw["clash_ninja"]
+    data_source = str(raw.get("data_source", "clash_ninja")).casefold()
+    if data_source not in {"clash_ninja", "json"}:
+        raise RuntimeError("data_source должен быть clash_ninja или json")
+    ninja = raw.get("clash_ninja", {})
     if not raw["bot_token"] or raw["bot_token"].startswith("PUT_"):
         raise RuntimeError("Укажите bot_token в config.json")
 
     cookie_header = (ninja.get("cookie_header") or "").strip()
-    if not cookie_header or cookie_header.startswith("PUT_"):
+    if data_source == "clash_ninja" and (not cookie_header or cookie_header.startswith("PUT_")):
         cookie_header = discover_cookie_header()
         if not cookie_header:
             raise RuntimeError(
@@ -57,6 +62,13 @@ def load_settings(path: str | Path = "config.json") -> Settings:
     if not -12 <= utc_offset_hours <= 14:
         raise RuntimeError("utc_offset_hours должен быть целым числом от -12 до 14")
 
+    clash_settings = None
+    if data_source == "clash_ninja":
+        clash_settings = ClashNinjaSettings(
+            tracker_url=ninja.get("tracker_url", "https://www.clash.ninja/upgrade-tracker"),
+            cookie_header=cookie_header,
+            request_timeout_seconds=max(5, int(ninja.get("request_timeout_seconds", 30))),
+        )
     return Settings(
         bot_token=raw["bot_token"],
         authorized_user_ids=frozenset(map(int, raw["authorized_user_ids"])),
@@ -65,9 +77,7 @@ def load_settings(path: str | Path = "config.json") -> Settings:
         dashboard_refresh_seconds=max(10, int(raw.get("dashboard_refresh_seconds", 10))),
         utc_offset_hours=utc_offset_hours,
         database_path=Path(raw.get("database_path", "data/clash_ninja_bot.sqlite3")),
-        clash_ninja=ClashNinjaSettings(
-            tracker_url=ninja.get("tracker_url", "https://www.clash.ninja/upgrade-tracker"),
-            cookie_header=cookie_header,
-            request_timeout_seconds=max(5, int(ninja.get("request_timeout_seconds", 30))),
-        ),
+        data_source=data_source,
+        json_accounts_directory=Path(raw.get("json_accounts_directory", "accounts")),
+        clash_ninja=clash_settings,
     )
