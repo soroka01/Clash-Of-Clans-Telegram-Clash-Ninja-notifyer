@@ -63,15 +63,14 @@ def _village_block(
     utc_offset_hours: int,
 ) -> str:
     village_url = f"{_TRACKER_URL}/{escape(village_id, quote=True)}/home"
-    village_title = f'🏰 <b>{escape(name)}</b>'
-    village_link = f'<a href="{village_url}">🔗 Открыть</a>'
+    village_title = f'🏰 <a href="{village_url}">{escape(name)}</a>'
     assigned_icons: dict[str, list[str]] = defaultdict(list)
     for helper in helpers:
         if helper.state == "assigned" and helper.target:
             assigned_icons[helper.target].append(_HELPER_ICONS.get(helper.helper_name, "🤖"))
 
     if not upgrades:
-        lines = [f"{village_title} · {village_link}", "✨ <i>Нет текущих улучшений</i>"]
+        lines = [village_title, "✨ <i>Нет текущих улучшений</i>"]
         helper_block = _helpers_line(helpers)
         if helper_block:
             lines.append(helper_block)
@@ -79,7 +78,7 @@ def _village_block(
     grouped: dict[str, list[Upgrade]] = defaultdict(list)
     for upgrade in upgrades:
         grouped[upgrade.category].append(upgrade)
-    lines = [f"{village_title} <i>· {len(upgrades)} в работе</i> · {village_link}"]
+    lines = [village_title]
     active_categories = [category for category in ("builder", "lab", "pet", "helper") if grouped.get(category)]
     for category in active_categories:
         items = grouped[category]
@@ -101,6 +100,45 @@ def _village_block(
     return "\n".join(lines)
 
 
+def _mixed_upgrade_block(
+    villages: dict[str, str],
+    upgrades: list[Upgrade],
+    helpers_by_village: dict[str, list[HelperStatus]],
+    utc_offset_hours: int,
+) -> str:
+    """Render every account's upgrade in one global nearest-first timeline."""
+    assigned_icons: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for village_id, helpers in helpers_by_village.items():
+        for helper in helpers:
+            if helper.state == "assigned" and helper.target:
+                assigned_icons[(village_id, helper.target)].append(_HELPER_ICONS.get(helper.helper_name, "🤖"))
+
+    ordered = sorted(
+        upgrades,
+        key=lambda item: item.finish_at or datetime.max.replace(tzinfo=timezone.utc),
+    )
+    lines: list[str] = []
+    for item in ordered:
+        village_url = f"{_TRACKER_URL}/{escape(item.village_id, quote=True)}/home"
+        village_link = f'<a href="{village_url}">{escape(villages.get(item.village_id, item.village_name))}</a>'
+        icon = _CATEGORY_META.get(item.category, ("•", ""))[0]
+        helper_prefix = " ".join(assigned_icons.get((item.village_id, f"{item.entity} {item.level}"), []))
+        helper_prefix = f"{helper_prefix} " if helper_prefix else ""
+        finished_at = item.finish_at.astimezone(_utc_zone(utc_offset_hours)).strftime("%d.%m · %H:%M")
+        lines.extend(
+            (
+                f"🏰 {village_link} · {icon} {helper_prefix}<b>{escape(item.entity)}</b> <code>{escape(item.level)}</code>",
+                f"  ⏳ <b>{_remaining(item)}</b> · 🏁 {finished_at}",
+            )
+        )
+
+    for village_id, name in villages.items():
+        helper_block = _helpers_line(helpers_by_village.get(village_id, []))
+        if helper_block:
+            lines.extend(("", f"🏰 <b>{escape(name)}</b>", helper_block))
+    return "\n".join(lines) or "✨ <i>Нет текущих улучшений</i>"
+
+
 def _helpers_line(helpers: list[HelperStatus]) -> str:
     available = [helper for helper in helpers if helper.state == "available"]
     if not available:
@@ -119,6 +157,7 @@ def render_dashboard(snapshot: Snapshot, view: str, utc_offset_hours: int = 0) -
     for helper in snapshot.helpers:
         helpers_by_village[helper.village_id].append(helper)
 
+    is_sorted = view == "sorted"
     if selected_id and selected_id in villages:
         body = _village_block(
             selected_id,
@@ -129,6 +168,10 @@ def render_dashboard(snapshot: Snapshot, view: str, utc_offset_hours: int = 0) -
         )
         title = "⚔️ <b>Текущие улучшения</b>"
         subtitle = f"<i>Аккаунт: {escape(villages[selected_id])}</i>"
+    elif is_sorted:
+        title = "⚔️ <b>Текущие улучшения</b>"
+        subtitle = f"<i>Все аккаунты · {len(villages)} · ближайшие первыми</i>"
+        body = _mixed_upgrade_block(villages, list(snapshot.upgrades), helpers_by_village, utc_offset_hours)
     else:
         title = "⚔️ <b>Текущие улучшения</b>"
         subtitle = f"<i>Все аккаунты · {len(villages)}</i>"
@@ -156,11 +199,15 @@ def render_dashboard(snapshot: Snapshot, view: str, utc_offset_hours: int = 0) -
         text = text[:4050] + "\n\n<i>Список сокращён: откройте отдельный аккаунт.</i>"
 
     buttons: list[list[InlineKeyboardButton]] = []
-    if view != "all":
+    if selected_id and selected_id in villages:
         buttons.append([InlineKeyboardButton(text="← 📋 Все аккаунты", callback_data="view:all")])
     elif len(villages) > 1:
         for village_id, name in villages.items():
             buttons.append([InlineKeyboardButton(text=f"🏰 {name}"[:50], callback_data=f"view:v:{village_id}")])
+    if is_sorted:
+        buttons.append([InlineKeyboardButton(text="↩ Обычная сортировка", callback_data="view:all")])
+    elif not selected_id:
+        buttons.append([InlineKeyboardButton(text="⏱ Сначала ближайшие", callback_data="view:sorted")])
     buttons.append([InlineKeyboardButton(text="🎮 Открыть Clash of Clans", url=_OPEN_GAME_URL)])
     buttons.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="menu:main")])
     return text, InlineKeyboardMarkup(inline_keyboard=buttons)

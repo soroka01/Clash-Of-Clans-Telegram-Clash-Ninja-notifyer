@@ -88,6 +88,12 @@ def _rows_from_village(
 ) -> list[Upgrade]:
     upgrades: list[Upgrade] = []
     for table in village.find_all("table"):
+        # The tracker page contains both Home Village (-hv) and Builder Base
+        # (-bb) sections inside one village overview. Builder Base is outside
+        # this bot's scope.
+        details = table.find_parent("div", class_="upgrade-details")
+        if details and str(details.get("id", "")).endswith("-bb"):
+            continue
         headers = [_clean(cell.get_text(" ", strip=True)).casefold() for cell in table.find_all("th")]
         if "entity" not in headers or "remaining" not in headers:
             continue
