@@ -6,7 +6,7 @@
   "dashboard_refresh_seconds": 10,
   "utc_offset_hours": 5,
   "database_path": "data/clash_ninja_bot.sqlite3",
-  "data_source": "clash_ninja",
+  "data_source": "json",
   "json_accounts_directory": "accounts",
   "clash_ninja": {
     "tracker_url": "https://www.clash.ninja/upgrade-tracker",
