@@ -13,7 +13,7 @@ BUILDINGS = {
     1000067: "Blacksmith", 1000068: "Spell Tower", 1000070: "Monolith",
     1000071: "Army Camp", 1000072: "Barracks", 1000077: "Multi-Archer Tower",
     1000084: "Ricochet Cannon", 1000085: "Firespitter", 1000086: "Hero Hall",
-    1000089: "Super Wizard Tower", 1000093: "Workshop", 1000102: "Giga Bomb",
+    1000089: "Super Wizard Tower", 1000093: "Workshop", 1000102: "Super Wizard Tower",
 }
 
 TRAPS = {
