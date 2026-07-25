@@ -119,15 +119,14 @@ def _mixed_upgrade_block(
     )
     lines: list[str] = []
     for item in ordered:
-        village_url = f"{_TRACKER_URL}/{escape(item.village_id, quote=True)}/home"
-        village_link = f'<a href="{village_url}">{escape(villages.get(item.village_id, item.village_name))}</a>'
+        village_name = escape(villages.get(item.village_id, item.village_name))
         icon = _CATEGORY_META.get(item.category, ("•", ""))[0]
         helper_prefix = " ".join(assigned_icons.get((item.village_id, f"{item.entity} {item.level}"), []))
         helper_prefix = f"{helper_prefix} " if helper_prefix else ""
         finished_at = item.finish_at.astimezone(_utc_zone(utc_offset_hours)).strftime("%d.%m · %H:%M")
         lines.extend(
             (
-                f"🏰 {village_link} · {icon} {helper_prefix}<b>{escape(item.entity)}</b> <code>{escape(item.level)}</code>",
+                f"🏰 <b>{village_name}</b> · {icon} {helper_prefix}<b>{escape(item.entity)}</b> <code>{escape(item.level)}</code>",
                 f"  ⏳ <b>{_remaining(item)}</b> · 🏁 {finished_at}",
             )
         )
@@ -137,6 +136,21 @@ def _mixed_upgrade_block(
         if helper_block:
             lines.extend(("", f"🏰 <b>{escape(name)}</b>", helper_block))
     return "\n".join(lines) or "✨ <i>Нет текущих улучшений</i>"
+
+
+def _fit_html(text: str, limit: int = 4096) -> str:
+    """Keep Telegram HTML valid when a dashboard exceeds the message limit."""
+    if len(text) <= limit:
+        return text
+    suffix = "\n\n<i>Список сокращён: откройте отдельный аккаунт.</i>"
+    available = limit - len(suffix)
+    lines: list[str] = []
+    for line in text.splitlines():
+        candidate = "\n".join(lines + [line])
+        if len(candidate) > available:
+            break
+        lines.append(line)
+    return "\n".join(lines) + suffix
 
 
 def _helpers_line(helpers: list[HelperStatus]) -> str:
@@ -194,9 +208,7 @@ def render_dashboard(snapshot: Snapshot, view: str, utc_offset_hours: int = 0) -
     updated = snapshot.fetched_at.astimezone(_utc_zone(utc_offset_hours)).strftime("%H:%M:%S")
     tracker_link = f'<a href="{_TRACKER_URL}">🌐 Открыть Clash Ninja Upgrade Tracker</a>'
     text = f"{title}\n{tracker_link}\n{subtitle}\n🕒 <code>{updated} {_utc_label(utc_offset_hours)}</code>\n\n{body}"
-    # Telegram allows at most 4096 characters. Preserve the keyboard even for large accounts.
-    if len(text) > 4096:
-        text = text[:4050] + "\n\n<i>Список сокращён: откройте отдельный аккаунт.</i>"
+    text = _fit_html(text)
 
     buttons: list[list[InlineKeyboardButton]] = []
     if selected_id and selected_id in villages:
