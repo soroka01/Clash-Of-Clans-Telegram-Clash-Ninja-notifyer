@@ -66,7 +66,7 @@ class UpgradeMonitor:
         async with self._snapshot_lock:
             self._latest = current
         logger.info(
-            "Clash Ninja обновлён: аккаунтов=%s, улучшений=%s, ближайшее=%s",
+            "Clash Ninja обновлён: аккаунтов: %s, улучшений: %s, ближайшее: %s",
             len(current.villages),
             len(current.upgrades),
             self._nearest_upgrade(current.upgrades),
@@ -86,7 +86,7 @@ class UpgradeMonitor:
         hours, remaining_seconds = divmod(remaining_seconds, 3_600)
         minutes = remaining_seconds // 60
         parts = ([f"{days}д"] if days else []) + ([f"{hours}ч"] if hours or days else []) + [f"{minutes}м"]
-        return f"{nearest.village_name} / {nearest.entity} {nearest.level}, осталось={' '.join(parts)}"
+        return f"{nearest.village_name} / {nearest.entity} {nearest.level}, осталось: {' '.join(parts)}"
 
     def _completed(self, previous: Snapshot, current: Snapshot) -> list[Upgrade]:
         active_now = {upgrade.key for upgrade in current.upgrades}
