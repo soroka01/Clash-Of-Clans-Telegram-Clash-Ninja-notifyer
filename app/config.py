@@ -4,6 +4,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from app.clash_ninja.cookies import discover_cookie_header
+
 
 @dataclass(frozen=True, slots=True)
 class ClashNinjaSettings:
@@ -41,8 +43,15 @@ def load_settings(path: str | Path = "config.json") -> Settings:
     ninja = raw["clash_ninja"]
     if not raw["bot_token"] or raw["bot_token"].startswith("PUT_"):
         raise RuntimeError("Укажите bot_token в config.json")
-    if not ninja.get("cookie_header") or ninja["cookie_header"].startswith("PUT_"):
-        raise RuntimeError("Укажите clash_ninja.cookie_header в config.json")
+
+    cookie_header = (ninja.get("cookie_header") or "").strip()
+    if not cookie_header or cookie_header.startswith("PUT_"):
+        cookie_header = discover_cookie_header()
+        if not cookie_header:
+            raise RuntimeError(
+                "Укажите clash_ninja.cookie_header в config.json или войдите в Clash Ninja в браузере, "
+                "чтобы бот смог найти cookie в AppData"
+            )
 
     utc_offset_hours = int(raw.get("utc_offset_hours", 0))
     if not -12 <= utc_offset_hours <= 14:
@@ -58,7 +67,7 @@ def load_settings(path: str | Path = "config.json") -> Settings:
         database_path=Path(raw.get("database_path", "data/clash_ninja_bot.sqlite3")),
         clash_ninja=ClashNinjaSettings(
             tracker_url=ninja.get("tracker_url", "https://www.clash.ninja/upgrade-tracker"),
-            cookie_header=ninja["cookie_header"],
+            cookie_header=cookie_header,
             request_timeout_seconds=max(5, int(ninja.get("request_timeout_seconds", 30))),
         ),
     )
