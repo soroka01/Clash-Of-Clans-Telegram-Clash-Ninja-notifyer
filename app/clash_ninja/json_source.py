@@ -33,6 +33,7 @@ def parse_account_json(payload: dict[str, Any], filename: str, now: datetime | N
     village_name = str(payload.get("name") or payload.get("village_name") or Path(filename).stem)
     upgrades: list[Upgrade] = []
     counters: dict[tuple[str, int], int] = {}
+    lab_assistant_target: str | None = None
 
     groups = (("buildings", "builder", BUILDINGS), ("traps", "builder", TRAPS),
               ("heroes", "builder", HEROES), ("units", "lab", TROOPS),
@@ -54,7 +55,10 @@ def parse_account_json(payload: dict[str, Any], filename: str, now: datetime | N
             label = _name(identifier, mapping)
             if counters[key] > 1 or sum(1 for x in payload.get(field, []) or [] if isinstance(x, dict) and x.get("data") == identifier) > 1:
                 label = f"{label} #{counters[key]}"
-            upgrades.append(Upgrade(village_id, village_name, category, label, f"{level} → {level + 1}", finish_at, f"json:{field}:{identifier}:{counters[key]}"))
+            level_text = f"{level} → {level + 1}"
+            upgrades.append(Upgrade(village_id, village_name, category, label, level_text, finish_at, f"json:{field}:{identifier}:{counters[key]}"))
+            if item.get("helper_recurrent") and category == "lab":
+                lab_assistant_target = f"{label} {level_text}"
 
     helpers: list[HelperStatus] = []
     for item in payload.get("helpers", []) or []:
@@ -69,7 +73,11 @@ def parse_account_json(payload: dict[str, Any], filename: str, now: datetime | N
             continue
         until = _finish(timestamp, item.get("helper_cooldown"))
         state = "cooldown" if until and until > fetched_at else "available"
-        helpers.append(HelperStatus(village_id, village_name, helper_name, state, None, until))
+        target = None
+        if helper_name == "Lab Assistant" and lab_assistant_target:
+            state = "assigned"
+            target = lab_assistant_target
+        helpers.append(HelperStatus(village_id, village_name, helper_name, state, target, until))
 
     return Snapshot(((village_id, village_name),), tuple(upgrades), tuple(helpers), fetched_at)
 
