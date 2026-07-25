@@ -119,8 +119,8 @@ class UpgradeMonitor:
                 await self.poll_once()
             except asyncio.CancelledError:
                 raise
-            except Exception:
-                logger.exception("Could not update Clash Ninja tracker")
+            except Exception as error:
+                logger.error("Could not update Clash Ninja tracker: %s", error)
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=self._poll_interval)
             except TimeoutError:

@@ -58,14 +58,14 @@ if not exist "%PYTHON_CMD%" (
 )
 
 echo [SETUP] Updating pip, setuptools and wheel in .venv...
-"%PYTHON_CMD%" -m pip install --upgrade pip setuptools wheel
+"%PYTHON_CMD%" -m pip install --quiet --upgrade pip setuptools wheel
 if errorlevel 1 (
     echo [ERROR] Could not update Python tools in .venv.
     exit /b 1
 )
 
 echo [SETUP] Installing project dependencies into .venv...
-"%PYTHON_CMD%" -m pip install -r requirements.txt
+"%PYTHON_CMD%" -m pip install --quiet -r requirements.txt
 if errorlevel 1 (
     echo [ERROR] Dependency installation failed.
     exit /b 1

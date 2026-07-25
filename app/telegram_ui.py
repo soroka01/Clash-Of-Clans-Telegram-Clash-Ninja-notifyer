@@ -290,8 +290,8 @@ class NotificationService:
                 logger.info("Notification sent: chat=%s message=%s item=%s", chat_id, message.message_id, label)
             except TelegramForbiddenError:
                 logger.warning("Bot is blocked in notification chat %s", chat_id)
-            except TelegramBadRequest:
-                logger.exception("Could not send notification to %s", chat_id)
+            except TelegramBadRequest as error:
+                logger.error("Could not send notification to %s: %s", chat_id, error)
 
 
 def make_router(dashboard: DashboardService, authorized_user_ids: frozenset[int]) -> Router:
