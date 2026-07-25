@@ -92,14 +92,15 @@ The supported launcher is [start.bat](start.bat). When the Windows Python Launch
 
 1. Clone the repository or download the [ZIP archive](https://github.com/soroka01/Clash-Of-Clans-Telegram-Clash-Ninja-notifyer/archive/refs/heads/main.zip).
 2. Copy [config.example.json](config.example.json) to `config.json`.
-3. Set the Telegram token, allowed user IDs, notification chats, and Clash Ninja cookie.
-4. Run:
+3. Set the Telegram token, allowed user IDs, and notification chats.
+4. Choose the data source: `"data_source": "clash_ninja"` for the website or `"data_source": "json"` for local game exports.
+5. Run:
 
    ```powershell
    .\start.bat
    ```
 
-5. Send `/start` to the bot.
+6. Send `/start` to the bot.
 
 The launcher creates a local `.venv`, upgrades `pip`, `setuptools`, and `wheel` inside it, installs `requirements.txt`, and starts `main.py`. It does not use global Python packages.
 
@@ -120,6 +121,8 @@ Manual launch after the environment has been prepared:
   "dashboard_refresh_seconds": 10,
   "utc_offset_hours": 5,
   "database_path": "data/clash_ninja_bot.sqlite3",
+  "data_source": "json",
+  "json_accounts_directory": "accounts",
   "clash_ninja": {
     "tracker_url": "https://www.clash.ninja/upgrade-tracker",
     "cookie_header": "PUT_FULL_COOKIE_HEADER_FROM_LOGGED_IN_CLASH_NINJA_HERE",
@@ -137,6 +140,8 @@ Manual launch after the environment has been prepared:
 | `dashboard_refresh_seconds` | Countdown redraw period; minimum 10 seconds |
 | `utc_offset_hours` | Default UTC offset, an integer from `-12` through `14` |
 | `database_path` | Local SQLite database path |
+| `data_source` | `clash_ninja` or `json` |
+| `json_accounts_directory` | Folder containing account JSON files |
 | `clash_ninja.tracker_url` | Upgrade Tracker URL |
 | `clash_ninja.cookie_header` | Complete HTTP `Cookie` header value |
 | `clash_ninja.request_timeout_seconds` | Request timeout; minimum 5 seconds |
@@ -220,4 +225,4 @@ The bot can read the game's JSON exports directly. Set this in `config.json`:
 
 Put one original JSON export per village in `accounts/`. No fields need to be added: the account name is the filename without `.json`, for example `accounts/Greatness.json`. Builder Base fields (`buildings2`, `units2`, and other `2`-suffix fields) are ignored.
 
-Cookie and website access are not required in this mode. When you replace an account JSON file, the bot detects completed active timers on the next polling cycle. See [accounts/README.md](accounts/README.md) for the file layout.
+Cookie and website access are not required in this mode. When you replace an account JSON file, the bot detects completed active timers on the next polling cycle.

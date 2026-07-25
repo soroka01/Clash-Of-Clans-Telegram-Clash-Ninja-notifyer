@@ -92,14 +92,15 @@ Clash Ninja HTML + live feed
 
 1. Склонируйте репозиторий или скачайте [ZIP-архив](https://github.com/soroka01/Clash-Of-Clans-Telegram-Clash-Ninja-notifyer/archive/refs/heads/main.zip).
 2. Скопируйте [config.example.json](config.example.json) в `config.json`.
-3. Укажите Telegram token, разрешённые user ID, чаты для уведомлений и Clash Ninja cookie.
-4. Запустите:
+3. Укажите Telegram token, разрешённые user ID и чаты для уведомлений.
+4. Выберите источник данных: `"data_source": "clash_ninja"` для сайта или `"data_source": "json"` для локальных экспортов игры.
+5. Запустите:
 
    ```powershell
    .\start.bat
    ```
 
-5. Отправьте боту `/start`.
+6. Отправьте боту `/start`.
 
 Launcher создаёт локальную `.venv`, обновляет в ней `pip`, `setuptools` и `wheel`, устанавливает `requirements.txt`, а затем запускает `main.py`. Глобальные Python-пакеты не используются.
 
@@ -120,6 +121,8 @@ Launcher создаёт локальную `.venv`, обновляет в ней
   "dashboard_refresh_seconds": 10,
   "utc_offset_hours": 5,
   "database_path": "data/clash_ninja_bot.sqlite3",
+  "data_source": "json",
+  "json_accounts_directory": "accounts",
   "clash_ninja": {
     "tracker_url": "https://www.clash.ninja/upgrade-tracker",
     "cookie_header": "PUT_FULL_COOKIE_HEADER_FROM_LOGGED_IN_CLASH_NINJA_HERE",
@@ -137,6 +140,8 @@ Launcher создаёт локальную `.venv`, обновляет в ней
 | `dashboard_refresh_seconds` | Период перерисовки countdown; минимум 10 секунд |
 | `utc_offset_hours` | UTC по умолчанию, целое число от `-12` до `14` |
 | `database_path` | Путь к локальной SQLite-базе |
+| `data_source` | `clash_ninja` или `json` |
+| `json_accounts_directory` | Папка с JSON-файлами аккаунтов |
 | `clash_ninja.tracker_url` | URL Upgrade Tracker |
 | `clash_ninja.cookie_header` | Полное значение HTTP-заголовка `Cookie` |
 | `clash_ninja.request_timeout_seconds` | Timeout запроса; минимум 5 секунд |
@@ -220,4 +225,4 @@ Cookie имеет срок действия. Если лог сообщает, �
 
 Положите исходный JSON каждой деревни отдельным файлом в папку `accounts/`. Ничего добавлять в JSON не нужно: ником считается имя файла без `.json`, например `accounts/Greatness.json`. Builder Base (`buildings2`, `units2` и другие поля с суффиксом `2`) не учитывается.
 
-В этом режиме cookie и доступ к сайту не нужны. При замене JSON-файла бот обнаружит завершение активного таймера на следующем цикле опроса. Пример структуры и правила размещения файлов находятся в [accounts/README.md](accounts/README.md).
+В этом режиме cookie и доступ к сайту не нужны. При замене JSON-файла бот обнаружит завершение активного таймера на следующем цикле опроса.
