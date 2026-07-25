@@ -30,7 +30,7 @@ def parse_account_json(payload: dict[str, Any], filename: str, now: datetime | N
     fetched_at = now or datetime.now(timezone.utc)
     timestamp = int(payload.get("timestamp", int(fetched_at.timestamp())))
     village_id = str(payload.get("village_id") or payload.get("tag") or Path(filename).stem)
-    village_name = str(payload.get("name") or payload.get("village_name") or Path(filename).stem)
+    village_name = Path(filename).stem
     upgrades: list[Upgrade] = []
     counters: dict[tuple[str, int], int] = {}
     lab_assistant_target: str | None = None

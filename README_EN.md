@@ -218,6 +218,6 @@ The bot can read the game's JSON exports directly. Set this in `config.json`:
 }
 ```
 
-Put one JSON export per village in `accounts/`. The original export format with `timestamp`, `buildings`, `traps`, `units`, `spells`, `heroes`, `pets`, and `helpers` is supported. Add a `name` field to control the account name shown in Telegram; otherwise the filename is used. Builder Base fields (`buildings2`, `units2`, and other `2`-suffix fields) are ignored.
+Put one original JSON export per village in `accounts/`. No fields need to be added: the account name is the filename without `.json`, for example `accounts/Greatness.json`. Builder Base fields (`buildings2`, `units2`, and other `2`-suffix fields) are ignored.
 
 Cookie and website access are not required in this mode. When you replace an account JSON file, the bot detects completed active timers on the next polling cycle. See [accounts/README.md](accounts/README.md) for the file layout.
