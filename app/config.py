@@ -50,7 +50,7 @@ def load_settings(path: str | Path = "config.json") -> Settings:
         if not cookie_header:
             raise RuntimeError(
                 "Укажите clash_ninja.cookie_header в config.json или войдите в Clash Ninja в браузере, "
-                "чтобы бот смог найти cookie в AppData"
+                "чтобы бот смог найти cookie в AppData. Если браузер открыт, закройте его и повторите запуск"
             )
 
     utc_offset_hours = int(raw.get("utc_offset_hours", 0))

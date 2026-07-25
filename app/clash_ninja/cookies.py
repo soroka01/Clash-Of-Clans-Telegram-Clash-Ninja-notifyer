@@ -117,7 +117,13 @@ def _candidate_cookie_db_paths() -> list[Path]:
 def _copy_sqlite_database(source: Path) -> Path:
     temp_dir = Path(tempfile.mkdtemp(prefix="clash_ninja_cookies_"))
     target = temp_dir / "Cookies"
-    shutil.copy2(source, target)
+    try:
+        shutil.copy2(source, target)
+    except PermissionError as error:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise RuntimeError(
+            f"Cookie DB заблокирована браузером: {source}. Закройте браузер и запустите бота ещё раз."
+        ) from error
     return target
 
 
