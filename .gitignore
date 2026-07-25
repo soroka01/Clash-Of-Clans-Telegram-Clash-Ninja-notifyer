@@ -16,6 +16,7 @@ __pycache__/
 data/
 logs/
 accounts/*.json
+accounts/*.md
 *.sqlite3
 *.db
 
