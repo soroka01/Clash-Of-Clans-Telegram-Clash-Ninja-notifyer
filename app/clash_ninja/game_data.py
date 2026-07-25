@@ -54,4 +54,7 @@ HEROES = {
     28000004: "Royal Champion", 28000006: "Minion Prince", 28000007: "Dragon Duke",
 }
 
-HELPERS = {93000000: "Lab Assistant", 93000001: "Builder's Apprentice", 93000002: "Alchemist", 93000003: "Alchemist"}
+# Maximum levels in the export identify the three supported helpers: Builder's
+# Apprentice (8), Lab Assistant (12), and Alchemist (7). ID 93000003 is an
+# internal helper slot and is intentionally ignored.
+HELPERS = {93000000: "Builder's Apprentice", 93000001: "Lab Assistant", 93000002: "Alchemist"}
