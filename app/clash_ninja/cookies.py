@@ -80,11 +80,19 @@ def _decrypt_cookie_value(encrypted_value: bytes, master_key: bytes | None) -> s
         if master_key and AESGCM is not None:
             nonce = payload[:12]
             ciphertext = payload[12:]
-            return AESGCM(master_key).decrypt(nonce, ciphertext, None).decode("utf-8", errors="replace")
+            plaintext = AESGCM(master_key).decrypt(nonce, ciphertext, None)
+            # Chromium prepends a 32-byte host hash to cookie values.
+            if len(plaintext) > 32 and all(32 <= byte < 127 for byte in plaintext[32:]):
+                plaintext = plaintext[32:]
+            return plaintext.decode("utf-8", errors="replace")
         # Fallback for older Chromium builds or when the AES helper is unavailable.
-        return _windows_decrypt(payload).decode("utf-8", errors="replace")
+        plaintext = _windows_decrypt(payload)
+        if len(plaintext) > 32 and all(32 <= byte < 127 for byte in plaintext[32:]):
+            plaintext = plaintext[32:]
+        return plaintext.decode("utf-8", errors="replace")
 
-    return _windows_decrypt(encrypted_value).decode("utf-8", errors="replace")
+    plaintext = _windows_decrypt(encrypted_value)
+    return plaintext.decode("utf-8", errors="replace")
 
 
 def _candidate_cookie_db_paths() -> list[Path]:
@@ -160,6 +168,9 @@ def _build_cookie_header_from_db(db_path: Path, domain_suffix: str) -> str | Non
         else:
             cookie_value = value or ""
         if not name or cookie_value == "":
+            continue
+        if any(ord(character) < 0x20 or ord(character) == 0x7F for character in cookie_value):
+            logger.debug("Пропущен cookie %s: значение содержит управляющие символы", name)
             continue
         cookies.append(f"{name}={cookie_value}")
 
