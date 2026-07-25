@@ -40,7 +40,7 @@ set "PYTHON_CMD=.venv\Scripts\python.exe"
 if not exist "%PYTHON_CMD%" (
     set "BOOTSTRAP_PY="
     where py >nul 2>&1
-    if not errorlevel 1 set "BOOTSTRAP_PY=py -3.14"
+    if not errorlevel 1 set "BOOTSTRAP_PY=py -3"
     if not defined BOOTSTRAP_PY (
         where python >nul 2>&1
         if not errorlevel 1 set "BOOTSTRAP_PY=python"
@@ -52,7 +52,10 @@ if not exist "%PYTHON_CMD%" (
     echo [SETUP] Creating .venv in the current directory...
     %BOOTSTRAP_PY% -m venv .venv
     if errorlevel 1 (
-        echo [ERROR] Could not create .venv.
+        echo [ERROR] Could not create .venv with %BOOTSTRAP_PY%.
+        echo [ERROR] Check that Python 3 is installed and this folder is writable.
+        echo [ERROR] Run this command manually to see the detailed reason:
+        echo         %BOOTSTRAP_PY% -m venv .venv
         exit /b 1
     )
 )
