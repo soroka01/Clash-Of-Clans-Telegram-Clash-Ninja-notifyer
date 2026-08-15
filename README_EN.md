@@ -82,7 +82,8 @@ The menu provides current upgrades, account selection, UTC settings, Clash Ninja
 ## 📋 Requirements
 
 - Windows;
-- Python **3.14**;
+- Python **3.14+** (the latest 3.14.6 patch is recommended);
+- pip 26.1.2, setuptools 84.0.0, and wheel 0.48.0 (the launcher installs these versions automatically);
 - a Clash Ninja account with Upgrade Tracker configured;
 - a Telegram bot created through [@BotFather](https://t.me/BotFather).
 

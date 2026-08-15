@@ -82,7 +82,8 @@ Clash Ninja HTML + live feed
 ## 📋 Требования
 
 - Windows;
-- Python **3.14**;
+- Python **3.14+** (рекомендуется актуальный патч 3.14.6);
+- pip 26.1.2, setuptools 84.0.0 и wheel 0.48.0 (launcher устанавливает эти версии автоматически);
 - аккаунт Clash Ninja с заполненным Upgrade Tracker;
 - Telegram-бот от [@BotFather](https://t.me/BotFather).
 
