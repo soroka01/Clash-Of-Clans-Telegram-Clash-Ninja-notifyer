@@ -1,95 +1,19 @@
-# ⚔️ Clash Ninja Telegram Notifier
+# Clash Ninja Telegram Notifier
 
-> A Windows aiogram Telegram bot that reads an authenticated Clash Ninja Upgrade Tracker, refreshes dashboards, and alerts you when upgrades finish.
+[Русский](README.md) · [English](README_EN.md)
 
-🌐 **Language:** [Русский](README.md) · [English](README_EN.md)
+Telegram bot for Clash of Clans upgrade timers and completion notifications across villages. Uses Clash Ninja or local game JSON exports.
 
-![Python](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)
-![Platform](https://img.shields.io/badge/Platform-Windows-0078D4?logo=windows&logoColor=white)
-![Telegram](https://img.shields.io/badge/Telegram-aiogram%203-2CA5E0?logo=telegram&logoColor=white)
-![License](https://img.shields.io/badge/License-MIT-green)
-
-## ✨ Overview
-
-The bot combines the static [Clash Ninja Upgrade Tracker](https://www.clash.ninja/upgrade-tracker) page with its live feed, stores a local snapshot, and presents current upgrades in Telegram. An open dashboard is refreshed by editing one message, while completed building, research, and pet upgrades and released assigned helpers produce separate alerts.
-
-> [!IMPORTANT]
-> The bot needs the complete HTTP `Cookie` header from an authenticated Clash Ninja session. Treat it like the Telegram bot token: never share it and never commit `config.json`.
-
-> [!NOTE]
-> This is an unofficial project and is not affiliated with Clash Ninja, Supercell, or the Clash of Clans developers. Use it only with your own account and follow the relevant services' rules.
-
-## 🚀 Highlights
-
-| Capability | How it works |
-| --- | --- |
-| Multiple villages | One all-account dashboard plus an individual view for each account |
-| Live countdowns | The open message is redrawn with a current countdown |
-| Durable events | Each snapshot is compared with the previous SQLite state |
-| Helpers | Lab Assistant, Builder's Apprentice, and Alchemist appear beside their target or as available |
-| Per-chat time | Each chat stores its own `UTC−12…UTC+14` offset |
-| Menu recovery | A saved menu is edited after restart or replaced if it is unavailable |
-
-The bot also:
-
-- tracks builder, Laboratory, and Pet House upgrades;
-- does not treat cooldown completion alone as a helper release;
-- restricts the Telegram menu to configured user IDs;
-- sends alerts to every chat in `notification_chat_ids`;
-- adds an **📋 Refresh menu** button to alerts; it deletes tracked menus and sends one fresh menu as the latest message;
-- removes that button from older alerts after `/start`, a button click, or an automatic replacement of a deleted menu;
-- writes detailed and error-only rotating logs.
-
-## 🏗️ Architecture
-
-```text
-main.py                    # bot, monitor, and refresh task bootstrap
-app/
-├── clash_ninja/
-│   ├── client.py          # HTML and /feed/villages.json in one session
-│   └── parser.py          # villages, upgrades, and helpers
-├── config.py              # config.json loading and validation
-├── models.py              # Upgrade, HelperStatus, and Snapshot
-├── monitor.py             # polling, snapshot diff, and events
-├── presentation.py        # Telegram HTML and inline keyboards
-├── storage.py             # SQLite state, dashboards, and timezones
-└── telegram_ui.py         # commands, callbacks, and notifications
-```
-
-Data flow:
-
-```text
-Clash Ninja HTML + live feed
-          ↓
-       parser
-          ↓
- snapshot ↔ SQLite
-          ↓
- monitor → notifications
-          └→ editable dashboards
-```
-
-## 🧭 Commands
-
-| Command | Action |
-| --- | --- |
-| `/start` | Open the main menu |
-| `/menu` | Open the main menu |
-| `/status` | Open the all-account dashboard directly |
-
-The menu provides current upgrades, account selection, UTC settings, Clash Ninja, Clash of Clans, and GitHub links.
-
-## 📋 Requirements
+## Requirements
 
 - Windows;
-- Python **3.14+** (the latest 3.14.6 patch is recommended);
-- pip 26.1.2, setuptools 84.0.0, and wheel 0.48.0 (the launcher installs these versions automatically);
+- Python **3.14+**;
 - a Clash Ninja account with Upgrade Tracker configured;
 - a Telegram bot created through [@BotFather](https://t.me/BotFather).
 
 The supported launcher is [start.bat](start.bat). When the Windows Python Launcher is present, it invokes the exact `py -3.14` selector; having only a newer Python version installed does not guarantee that `.venv` can be created. Other operating systems are not supported by the current release.
 
-## ⚙️ Quick start
+## Quick start
 
 1. Clone the repository or download the [ZIP archive](https://github.com/soroka01/Clash-Of-Clans-Telegram-Clash-Ninja-notifyer/archive/refs/heads/main.zip).
 2. Copy [config.example.json](config.example.json) to `config.json`.
@@ -111,7 +35,26 @@ Manual launch after the environment has been prepared:
 .\.venv\Scripts\python.exe main.py
 ```
 
-## 🔧 Configuration
+## How it works
+
+```mermaid
+flowchart TD
+    A["Clash Ninja / JSON"] --> B["Snapshot"]
+    B["Snapshot"] --> C["SQLite"]
+    C["SQLite"] --> D["Telegram"]
+```
+
+## Commands
+
+| Command | Action |
+| --- | --- |
+| `/start` | Open the main menu |
+| `/menu` | Open the main menu |
+| `/status` | Open the all-account dashboard directly |
+
+The menu provides current upgrades, account selection, UTC settings, Clash Ninja, Clash of Clans, and GitHub links.
+
+## Configuration
 
 ```json
 {
@@ -150,7 +93,7 @@ Manual launch after the environment has been prepared:
 > [!WARNING]
 > An empty `authorized_user_ids` list allows any Telegram user who finds the bot to use its menu. Always configure at least your own numeric user ID for a private installation.
 
-## 🍪 Getting the Clash Ninja cookie
+## Getting the Clash Ninja cookie
 
 1. Sign in to Clash Ninja and open [Upgrade Tracker](https://www.clash.ninja/upgrade-tracker).
 2. Press `F12`, open **Network**, and reload the page.
@@ -161,7 +104,7 @@ Manual launch after the environment has been prepared:
 
 Cookies expire. If the log says Clash Ninja rejected the session, sign in again and replace the value.
 
-## 🔐 Local data and security
+## Local data and security
 
 | Path | Contents |
 | --- | --- |
@@ -172,7 +115,7 @@ Cookies expire. If the log says Clash Ninja rejected the session, sign in again 
 
 Do not publish these files. Keep `config.json` and `data/` when moving an installation if you want to preserve settings and saved screens.
 
-## 🔄 Automatic updates
+## Automatic updates
 
 `start.bat` checks for updates before launch:
 
@@ -183,18 +126,11 @@ Do not publish these files. Keep `config.json` and `data/` when moving an instal
 
 Both paths preserve `config.json`, `.venv`, `data/`, and `logs/`. ZIP mode may replace every other project file, so do not keep uncommitted source edits in that directory.
 
-## 🧪 Limitations and testing
+## Limitations
 
 - The parser depends on Clash Ninja's current HTML and feed structure and may need updates when the site changes.
-- The repository contains one parser test, but its local fixture `html/Villages - Clash Ninja.html` is not published and `pytest` is not a runtime dependency. The test suite is therefore **not reproducible from a clean clone**.
-- No GitHub Actions or other CI workflow is configured.
-- Module syntax can be checked without network credentials:
 
-  ```powershell
-  python -m compileall -q main.py app
-  ```
-
-## 🩹 Troubleshooting
+## Troubleshooting
 
 | Symptom | Check |
 | --- | --- |
@@ -204,14 +140,6 @@ Both paths preserve `config.json`, `.venv`, `data/`, and `logs/`. ZIP mode may r
 | The dashboard is stale | Clash Ninja availability and `poll_interval_seconds` |
 | The update is skipped | `git status --short`, including untracked files |
 | `.venv` is not created | Python 3.14 is available for `py -3.14` |
-
-## 📄 License
-
-Distributed under the [MIT License](LICENSE).
-
----
-
-⚔️ Current timers stay in one message; completions arrive as separate alerts.
 
 ## JSON mode without Clash Ninja
 
@@ -227,3 +155,15 @@ The bot can read the game's JSON exports directly. Set this in `config.json`:
 Put one original JSON export per village in `accounts/`. No fields need to be added: the account name is the filename without `.json`, for example `accounts/Greatness.json`. Builder Base fields (`buildings2`, `units2`, and other `2`-suffix fields) are ignored.
 
 Cookie and website access are not required in this mode. When you replace an account JSON file, the bot detects completed active timers on the next polling cycle.
+
+## License
+
+[MIT](LICENSE).
+
+## Support
+
+Feel free to [fork this repository](https://github.com/soroka01/Clash-Of-Clans-Telegram-Clash-Ninja-notifyer/fork) and adapt it. If it helped you, leave a [Star](https://github.com/soroka01/Clash-Of-Clans-Telegram-Clash-Ninja-notifyer) so I can see it was useful.
+
+---
+
+with love ❤️
