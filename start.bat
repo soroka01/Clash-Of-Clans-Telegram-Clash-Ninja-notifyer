@@ -3,6 +3,7 @@ setlocal EnableExtensions
 cd /d "%~dp0"
 chcp 65001 >nul 2>&1
 set "PYTHONUTF8=1"
+title Clash Of Clans
 
 rem Update only project files. config.json, accounts/, .venv, data/ and logs/ stay local.
 where git >nul 2>&1
