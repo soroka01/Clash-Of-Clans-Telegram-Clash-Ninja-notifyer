@@ -1,26 +1,23 @@
-# Local configuration and secrets
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+
+# Config and secrets
 config.json
 .env
 .env.*
 
-# Python
-.venv/
-__pycache__/
-*.py[cod]
-*.pyo
-*.egg-info/
-.pytest_cache/
-.mypy_cache/
-
-# Local bot state
+# Runtime data
 data/
 logs/
 accounts/*.json
 accounts/*.md
 *.sqlite3
 *.db
-
-# Personal saved source pages / browser exports
+*.log
 html/
 
 # Editors and OS
