@@ -14,7 +14,7 @@ from aiogram.enums import ParseMode
 
 from app.clash_ninja.client import ClashNinjaClient
 from app.clash_ninja.json_source import JsonAccountSource
-from app.config import load_settings
+from app.config import Settings, load_settings
 from app.monitor import UpgradeMonitor
 from app.storage import Storage
 from app.telegram_ui import (
@@ -62,10 +62,42 @@ def _console_supports_colors() -> bool:
         return False
 
 
+LOG_DATE_FORMAT = "%d %H:%M:%S"
+LOG_FORMAT = "%(asctime)s | %(levelname)-7s | %(name)-15s | %(message)s"
+
+
+def build_source(settings: Settings) -> ClashNinjaClient | JsonAccountSource:
+    if settings.data_source == "clash_ninja" and settings.clash_ninja:
+        return ClashNinjaClient(settings.clash_ninja)
+    return JsonAccountSource(settings.json_accounts_directory)
+
+
+def configure_logging(log_directory: Path = Path("logs")) -> None:
+    log_directory.mkdir(exist_ok=True)
+    plain = logging.Formatter(LOG_FORMAT, datefmt=LOG_DATE_FORMAT)
+
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+    console.setFormatter(ColorFormatter(LOG_FORMAT, datefmt=LOG_DATE_FORMAT, use_colors=_console_supports_colors()))
+
+    def rotating(name: str, level: int) -> RotatingFileHandler:
+        handler = RotatingFileHandler(log_directory / name, maxBytes=5_000_000, backupCount=5, encoding="utf-8")
+        handler.setLevel(level)
+        handler.setFormatter(plain)
+        return handler
+
+    logging.basicConfig(
+        level=logging.DEBUG,
+        handlers=[console, rotating("bot.log", logging.DEBUG), rotating("error.log", logging.ERROR)],
+    )
+    logging.getLogger("aiohttp").setLevel(logging.WARNING)
+    logging.getLogger("aiogram").setLevel(logging.WARNING)
+
+
 async def run() -> None:
     settings = load_settings()
     storage = Storage(settings.database_path)
-    client = ClashNinjaClient(settings.clash_ninja) if settings.data_source == "clash_ninja" and settings.clash_ninja else JsonAccountSource(settings.json_accounts_directory)
+    client = build_source(settings)
     await client.start()
     bot = Bot(settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     notifier = NotificationService(bot, storage, settings.notification_chat_ids, settings.utc_offset_hours)
@@ -103,30 +135,7 @@ async def run() -> None:
 
 
 if __name__ == "__main__":
-    log_directory = Path("logs")
-    log_directory.mkdir(exist_ok=True)
-    formatter = logging.Formatter(
-        "%(asctime)s | %(levelname)-7s | %(name)-15s | %(message)s",
-        datefmt="%d %H:%M:%S",
-    )
-    console = logging.StreamHandler()
-    console.setLevel(logging.INFO)
-    console.setFormatter(
-        ColorFormatter(
-            formatter._style._fmt,
-            datefmt="%d %H:%M:%S",
-            use_colors=_console_supports_colors(),
-        )
-    )
-    file_handler = RotatingFileHandler(log_directory / "bot.log", maxBytes=5_000_000, backupCount=5, encoding="utf-8")
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(formatter)
-    error_handler = RotatingFileHandler(log_directory / "error.log", maxBytes=5_000_000, backupCount=5, encoding="utf-8")
-    error_handler.setLevel(logging.ERROR)
-    error_handler.setFormatter(formatter)
-    logging.basicConfig(level=logging.DEBUG, handlers=[console, file_handler, error_handler])
-    logging.getLogger("aiohttp").setLevel(logging.WARNING)
-    logging.getLogger("aiogram").setLevel(logging.WARNING)
+    configure_logging()
     try:
         asyncio.run(run())
     except (KeyboardInterrupt, SystemExit):

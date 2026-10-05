@@ -3,20 +3,25 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Awaitable, Callable
+from typing import Awaitable, Callable, Protocol
 
 from app.models import HelperStatus, Snapshot, Upgrade
 from app.storage import Storage
+from app.timefmt import format_duration
 
 logger = logging.getLogger(__name__)
 NotificationEvent = Upgrade | HelperStatus
 NotificationCallback = Callable[[NotificationEvent], Awaitable[None]]
 
 
+class SnapshotSource(Protocol):
+    async def fetch_snapshot(self) -> Snapshot: ...
+
+
 class UpgradeMonitor:
     def __init__(
         self,
-        client: object,
+        client: SnapshotSource,
         storage: Storage,
         poll_interval_seconds: int,
         notify: NotificationCallback,
@@ -42,7 +47,7 @@ class UpgradeMonitor:
             self._latest = snapshot
 
     async def poll_once(self) -> None:
-        logger.debug("Starting Clash Ninja polling cycle")
+        logger.debug("Starting polling cycle")
         current = await self._client.fetch_snapshot()
         previous = await self._storage.load_snapshot()
 
@@ -71,19 +76,12 @@ class UpgradeMonitor:
 
     @staticmethod
     def _nearest_upgrade(upgrades: tuple[Upgrade, ...]) -> str:
-        now = datetime.now(timezone.utc)
-        timed_upgrades = [upgrade for upgrade in upgrades if upgrade.finish_at]
-        if not timed_upgrades:
+        timed = [(upgrade.finish_at, upgrade) for upgrade in upgrades if upgrade.finish_at is not None]
+        if not timed:
             return "нет таймеров"
-
-        nearest = min(timed_upgrades, key=lambda upgrade: upgrade.finish_at or datetime.max.replace(tzinfo=timezone.utc))
-        assert nearest.finish_at is not None
-        remaining_seconds = max(0, int((nearest.finish_at - now).total_seconds()))
-        days, remaining_seconds = divmod(remaining_seconds, 86_400)
-        hours, remaining_seconds = divmod(remaining_seconds, 3_600)
-        minutes = remaining_seconds // 60
-        parts = ([f"{days}д"] if days else []) + ([f"{hours}ч"] if hours or days else []) + [f"{minutes}м"]
-        return f"{nearest.village_name} / {nearest.entity} {nearest.level}, осталось: {' '.join(parts)}"
+        finish_at, nearest = min(timed, key=lambda pair: pair[0])
+        remaining = int((finish_at - datetime.now(timezone.utc)).total_seconds())
+        return f"{nearest.village_name} / {nearest.entity} {nearest.level}, осталось: {format_duration(remaining)}"
 
     def _completed(self, previous: Snapshot, current: Snapshot) -> list[Upgrade]:
         active_now = {upgrade.key for upgrade in current.upgrades}

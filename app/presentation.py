@@ -7,6 +7,7 @@ from html import escape
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.models import HelperStatus, Snapshot, Upgrade
+from app.timefmt import format_duration
 
 
 _CATEGORY_META = {
@@ -39,11 +40,7 @@ def _remaining(upgrade: Upgrade) -> str:
     seconds = int((upgrade.finish_at - datetime.now(timezone.utc)).total_seconds())
     if seconds <= 0:
         return "готово"
-    days, seconds = divmod(seconds, 86_400)
-    hours, seconds = divmod(seconds, 3_600)
-    minutes = seconds // 60
-    parts = ([f"{days}д"] if days else []) + ([f"{hours}ч"] if hours or days else []) + [f"{minutes}м"]
-    return " ".join(parts)
+    return format_duration(seconds)
 
 
 def _upgrade_line(upgrade: Upgrade, prefix: str, utc_offset_hours: int, helper_icons: list[str]) -> str:

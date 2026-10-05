@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -39,7 +40,9 @@ def parse_account_json(payload: dict[str, Any], filename: str, now: datetime | N
               ("heroes", "builder", HEROES), ("units", "lab", TROOPS),
               ("spells", "lab", SPELLS), ("pets", "pet", PETS))
     for field, category, mapping in groups:
-        for item in payload.get(field, []) or []:
+        items = payload.get(field, []) or []
+        copies = Counter(item.get("data") for item in items if isinstance(item, dict))
+        for item in items:
             if not isinstance(item, dict) or "timer" not in item:
                 continue
             try:
@@ -53,7 +56,7 @@ def parse_account_json(payload: dict[str, Any], filename: str, now: datetime | N
             key = (category, identifier)
             counters[key] = counters.get(key, 0) + 1
             label = _name(identifier, mapping)
-            if counters[key] > 1 or sum(1 for x in payload.get(field, []) or [] if isinstance(x, dict) and x.get("data") == identifier) > 1:
+            if copies[item["data"]] > 1:
                 label = f"{label} #{counters[key]}"
             level_text = f"{level} → {level + 1}"
             upgrades.append(Upgrade(village_id, village_name, category, label, level_text, finish_at, f"json:{field}:{identifier}:{counters[key]}"))

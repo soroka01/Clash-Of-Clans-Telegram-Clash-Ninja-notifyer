@@ -95,40 +95,28 @@ class DashboardService:
     async def send_main_menu(self, message: Message) -> bool:
         return await self.send_main_menu_to_chat(message.chat.id)
 
-    async def edit_dashboard(self, chat_id: int, message_id: int, view: str) -> bool:
-        text, keyboard = await self._payload(chat_id, view)
+    async def _edit(self, chat_id: int, message_id: int, text: str, keyboard: object, view: str, what: str) -> bool:
+        """Edit a tracked menu message in place and remember its new view."""
         try:
-            await self._bot.edit_message_text(
-                text=text,
-                chat_id=chat_id,
-                message_id=message_id,
-                reply_markup=keyboard,
-            )
+            await self._bot.edit_message_text(text=text, chat_id=chat_id, message_id=message_id, reply_markup=keyboard)
         except TelegramBadRequest as error:
             if "message is not modified" not in str(error).lower():
-                logger.warning("Could not edit dashboard %s/%s: %s", chat_id, message_id, error)
+                logger.warning("Could not edit %s %s/%s: %s", what, chat_id, message_id, error)
                 return False
         except TelegramForbiddenError:
             return False
         await self._storage.update_dashboard_view(chat_id, view)
         await self._storage.remember_menu_message(chat_id, message_id)
-        logger.debug("Dashboard edited: chat=%s message=%s view=%s", chat_id, message_id, view)
+        logger.debug("%s edited: chat=%s message=%s view=%s", what.capitalize(), chat_id, message_id, view)
         return True
+
+    async def edit_dashboard(self, chat_id: int, message_id: int, view: str) -> bool:
+        text, keyboard = await self._payload(chat_id, view)
+        return await self._edit(chat_id, message_id, text, keyboard, view, "dashboard")
 
     async def edit_main_menu(self, chat_id: int, message_id: int) -> bool:
         text, keyboard = render_main_menu()
-        try:
-            await self._bot.edit_message_text(text=text, chat_id=chat_id, message_id=message_id, reply_markup=keyboard)
-        except TelegramBadRequest as error:
-            if "message is not modified" not in str(error).lower():
-                logger.warning("Could not edit main menu %s/%s: %s", chat_id, message_id, error)
-                return False
-        except TelegramForbiddenError:
-            return False
-        await self._storage.update_dashboard_view(chat_id, "main")
-        await self._storage.remember_menu_message(chat_id, message_id)
-        logger.debug("Main menu edited: chat=%s message=%s", chat_id, message_id)
-        return True
+        return await self._edit(chat_id, message_id, text, keyboard, "main", "main menu")
 
     async def send_time_settings_to_chat(self, chat_id: int) -> bool:
         offset = await self._storage.get_utc_offset(chat_id, self._utc_offset_hours)
@@ -141,17 +129,7 @@ class DashboardService:
     async def edit_time_settings(self, chat_id: int, message_id: int) -> bool:
         offset = await self._storage.get_utc_offset(chat_id, self._utc_offset_hours)
         text, keyboard = render_time_settings(offset)
-        try:
-            await self._bot.edit_message_text(text=text, chat_id=chat_id, message_id=message_id, reply_markup=keyboard)
-        except TelegramBadRequest as error:
-            if "message is not modified" not in str(error).lower():
-                logger.warning("Could not edit time settings %s/%s: %s", chat_id, message_id, error)
-                return False
-        except TelegramForbiddenError:
-            return False
-        await self._storage.update_dashboard_view(chat_id, "settings")
-        await self._storage.remember_menu_message(chat_id, message_id)
-        return True
+        return await self._edit(chat_id, message_id, text, keyboard, "settings", "time settings")
 
     @staticmethod
     def _can_edit(state, message_id: int) -> bool:
@@ -162,42 +140,32 @@ class DashboardService:
             and state.latest_bot_message_id == message_id
         )
 
-    async def handle_callback(self, callback: CallbackQuery, view: str) -> None:
+    async def _open(self, callback: CallbackQuery, edit, send, description: str) -> None:
+        """Edit the pressed menu if it is still the latest bot message, otherwise send a fresh one."""
         if not callback.message:
             return
-        chat_id = callback.message.chat.id
-        message_id = callback.message.message_id
+        chat_id, message_id = callback.message.chat.id, callback.message.message_id
         state = await self._storage.get_dashboard(chat_id)
-        # Edit only when the pressed menu is the most recent bot message. If a completion
-        # notification appeared after it, create a fresh menu instead of modifying old context.
-        can_edit = self._can_edit(state, message_id)
-        if can_edit and await self.edit_dashboard(chat_id, message_id, view):
-            logger.info("Menu click edited dashboard: %s view=%s", _actor_label(callback), view)
+        # A completion notification posted after the menu makes it stale: do not rewrite old context.
+        if self._can_edit(state, message_id) and await edit(chat_id, message_id):
+            logger.info("Menu click edited message (%s): %s", description, _actor_label(callback))
             return
-        logger.info("Menu click created a new dashboard: %s view=%s", _actor_label(callback), view)
-        await self.send_dashboard(callback.message, view)
+        logger.info("Menu click created a new message (%s): %s", description, _actor_label(callback))
+        await send(callback.message)
+
+    async def handle_callback(self, callback: CallbackQuery, view: str) -> None:
+        await self._open(
+            callback,
+            lambda chat_id, message_id: self.edit_dashboard(chat_id, message_id, view),
+            lambda message: self.send_dashboard(message, view),
+            f"view={view}",
+        )
 
     async def handle_main_menu(self, callback: CallbackQuery) -> None:
-        if not callback.message:
-            return
-        state = await self._storage.get_dashboard(callback.message.chat.id)
-        message_id = callback.message.message_id
-        if self._can_edit(state, message_id) and await self.edit_main_menu(callback.message.chat.id, message_id):
-            logger.info("Menu click returned to main menu: %s", _actor_label(callback))
-            return
-        logger.info("Menu click created a new main menu: %s", _actor_label(callback))
-        await self.send_main_menu(callback.message)
+        await self._open(callback, self.edit_main_menu, self.send_main_menu, "main menu")
 
     async def handle_time_settings(self, callback: CallbackQuery) -> None:
-        if not callback.message:
-            return
-        state = await self._storage.get_dashboard(callback.message.chat.id)
-        message_id = callback.message.message_id
-        if self._can_edit(state, message_id) and await self.edit_time_settings(callback.message.chat.id, message_id):
-            logger.info("Menu click opened time settings: %s", _actor_label(callback))
-            return
-        logger.info("Menu click created time settings: %s", _actor_label(callback))
-        await self.send_time_settings(callback.message)
+        await self._open(callback, self.edit_time_settings, self.send_time_settings, "time settings")
 
     async def set_time_zone(self, callback: CallbackQuery, utc_offset_hours: int) -> None:
         if not callback.message:
@@ -297,14 +265,22 @@ class NotificationService:
 def make_router(dashboard: DashboardService, authorized_user_ids: frozenset[int]) -> Router:
     router = Router()
 
-    def allowed(message: Message | CallbackQuery) -> bool:
-        user = message.from_user
+    def allowed(event: Message | CallbackQuery) -> bool:
+        user = event.from_user
         return bool(user and (not authorized_user_ids or user.id in authorized_user_ids))
+
+    async def authorize(event: Message | CallbackQuery) -> bool:
+        """Log and reject unauthorized users; callbacks get an alert so the button does not spin."""
+        if allowed(event):
+            return True
+        logger.warning("Unauthorized %s ignored: %s", type(event).__name__, _actor_label(event))
+        if isinstance(event, CallbackQuery):
+            await event.answer("Нет доступа", show_alert=True)
+        return False
 
     @router.message(Command("start", "menu", "status"))
     async def command_menu(message: Message) -> None:
-        if not allowed(message):
-            logger.warning("Unauthorized command ignored: %s chat=%s", _actor_label(message), message.chat.id)
+        if not await authorize(message):
             return
         logger.info("Menu command received: %s chat=%s command=%r", _actor_label(message), message.chat.id, message.text)
         if message.text and message.text.startswith("/status"):
@@ -314,9 +290,7 @@ def make_router(dashboard: DashboardService, authorized_user_ids: frozenset[int]
 
     @router.callback_query(lambda query: query.data and query.data.startswith("view:"))
     async def choose_view(callback: CallbackQuery) -> None:
-        if not allowed(callback):
-            logger.warning("Unauthorized callback ignored: %s chat=%s data=%s", _actor_label(callback), callback.message.chat.id if callback.message else "?", callback.data)
-            await callback.answer("Нет доступа", show_alert=True)
+        if not await authorize(callback):
             return
         view = callback.data.removeprefix("view:")
         logger.debug("Menu callback received: %s view=%s", _actor_label(callback), view)
@@ -325,9 +299,7 @@ def make_router(dashboard: DashboardService, authorized_user_ids: frozenset[int]
 
     @router.callback_query(lambda query: query.data and query.data.startswith("menu:"))
     async def choose_menu(callback: CallbackQuery) -> None:
-        if not allowed(callback):
-            logger.warning("Unauthorized menu callback ignored: %s", _actor_label(callback))
-            await callback.answer("Нет доступа", show_alert=True)
+        if not await authorize(callback):
             return
         action = callback.data.removeprefix("menu:")
         logger.debug("Main menu callback received: %s action=%s", _actor_label(callback), action)
@@ -341,11 +313,7 @@ def make_router(dashboard: DashboardService, authorized_user_ids: frozenset[int]
 
     @router.callback_query(lambda query: query.data == "alert:menu")
     async def refresh_menu_from_alert(callback: CallbackQuery) -> None:
-        if not allowed(callback):
-            logger.warning("Unauthorized alert-menu callback ignored: %s", _actor_label(callback))
-            await callback.answer("Нет доступа", show_alert=True)
-            return
-        if not callback.message:
+        if not await authorize(callback) or not callback.message:
             return
         await callback.answer()
         chat_id = callback.message.chat.id
@@ -354,9 +322,7 @@ def make_router(dashboard: DashboardService, authorized_user_ids: frozenset[int]
 
     @router.callback_query(lambda query: query.data and query.data.startswith("tz:"))
     async def choose_time_zone(callback: CallbackQuery) -> None:
-        if not allowed(callback):
-            logger.warning("Unauthorized timezone callback ignored: %s", _actor_label(callback))
-            await callback.answer("Нет доступа", show_alert=True)
+        if not await authorize(callback):
             return
         try:
             offset = int(callback.data.removeprefix("tz:"))
