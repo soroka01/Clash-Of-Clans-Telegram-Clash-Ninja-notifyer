@@ -1,8 +1,8 @@
 # ⚔️ Clash Ninja Telegram Notifier
 
-> Telegram-бот для отслеживания улучшений Clash of Clans: таймеры по деревням и уведомления о завершении.
+> Telegram bot for Clash of Clans upgrade timers and completion notifications across villages.
 
-🌐 **Язык / Language:** [Русский](README.md) · [English](README_EN.md)
+🌐 **Language / Язык:** [English](README.md) · [Русский](README_RU.md)
 
 ![Python](https://img.shields.io/badge/Python-3.14%2B-3776AB?logo=python&logoColor=white)
 ![aiogram](https://img.shields.io/badge/aiogram-3.x-2CA5E0?logo=telegram&logoColor=white)
@@ -10,26 +10,26 @@
 ![SQLite](https://img.shields.io/badge/SQLite-storage-003B57?logo=sqlite&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-## 📌 Обзор
+## 📌 Overview
 
-Бот следит за таймерами улучшений нескольких аккаунтов (деревень) Clash of Clans, показывает их в Telegram-dashboard с обновляемым countdown и присылает уведомление, когда улучшение завершено. Источник данных — Clash Ninja Upgrade Tracker или локальные JSON-экспорты игры.
+The bot tracks upgrade timers for several Clash of Clans accounts (villages), shows them in a Telegram dashboard with a refreshing countdown, and sends a notification when an upgrade completes. Data comes from the Clash Ninja Upgrade Tracker or from local game JSON exports.
 
 > [!WARNING]
-> Пустой `authorized_user_ids` означает доступ для любого Telegram-пользователя, который найдёт бота. Для приватной установки всегда указывайте хотя бы свой числовой user ID.
+> An empty `authorized_user_ids` list allows any Telegram user who finds the bot to use its menu. Always configure at least your own numeric user ID for a private installation.
 
 > [!NOTE]
-> Поддерживается только Windows и запуск через [start.bat](start.bat). Builder Base не учитывается.
+> Only Windows and launching through [start.bat](start.bat) are supported. Builder Base is not tracked.
 
-## ✨ Возможности
+## ✨ Features
 
-- Таймеры улучшений по деревням и dashboard всех аккаунтов с обновляемым countdown.
-- Уведомления о завершении в личные чаты или группы.
-- Два источника данных: Clash Ninja (cookie) или локальные JSON-экспорты игры.
-- Настройка часового пояса (UTC) через меню бота.
-- Состояние (snapshot, сообщения dashboards, timezone) хранится в локальной SQLite.
-- `start.bat` сам создаёт `.venv`, ставит зависимости и проверяет обновления.
+- Upgrade timers per village and a dashboard for all accounts with a refreshing countdown.
+- Completion notifications to private chats or groups.
+- Two data sources: Clash Ninja (cookie) or local game JSON exports.
+- Timezone (UTC) setting from the bot menu.
+- State (snapshot, dashboard messages, timezone) is stored in a local SQLite database.
+- `start.bat` creates `.venv`, installs dependencies, and checks for updates by itself.
 
-## 🏗️ Как это работает
+## 🏗️ How it works
 
 ```mermaid
 flowchart LR
@@ -38,49 +38,49 @@ flowchart LR
     C --> D["Telegram"]
 ```
 
-Бот периодически (`poll_interval_seconds`) получает данные и сохраняет snapshot; countdown в dashboard перерисовывается с периодом `dashboard_refresh_seconds`.
+The bot fetches data periodically (`poll_interval_seconds`) and stores a snapshot; the dashboard countdown is redrawn every `dashboard_refresh_seconds`.
 
-## 🚀 Быстрый старт
+## 🚀 Quick start
 
-### Требования
+### Requirements
 
 - Windows;
-- Python **3.14+** (при наличии Windows Python Launcher `start.bat` вызывает `py -3.14`; одной лишь более новой версии для создания `.venv` недостаточно);
-- Telegram-бот от [@BotFather](https://t.me/BotFather);
-- для источника Clash Ninja: аккаунт с заполненным Upgrade Tracker.
+- Python **3.14+** (with the Windows Python Launcher present, `start.bat` invokes `py -3.14`; having only a newer Python installed does not guarantee `.venv` can be created);
+- a Telegram bot created through [@BotFather](https://t.me/BotFather);
+- for the Clash Ninja source: an account with Upgrade Tracker configured.
 
-### Установка
+### Installation
 
 ```powershell
 git clone https://github.com/soroka01/Clash-Of-Clans-Telegram-Clash-Ninja-notifyer.git
 cd Clash-Of-Clans-Telegram-Clash-Ninja-notifyer
 ```
 
-Либо скачайте [ZIP-архив](https://github.com/soroka01/Clash-Of-Clans-Telegram-Clash-Ninja-notifyer/archive/refs/heads/main.zip).
+Or download the [ZIP archive](https://github.com/soroka01/Clash-Of-Clans-Telegram-Clash-Ninja-notifyer/archive/refs/heads/main.zip).
 
-### Настройка
+### Configuration
 
 ```powershell
 Copy-Item config.example.json config.json
 ```
 
-Укажите в `config.json` Telegram token, разрешённые user ID, чаты для уведомлений и `data_source` (`clash_ninja` или `json`). Все поля описаны ниже.
+In `config.json` set the Telegram token, allowed user IDs, notification chats, and `data_source` (`clash_ninja` or `json`). All fields are described below.
 
-### Запуск
+### Run
 
 ```powershell
 .\start.bat
 ```
 
-Затем отправьте боту `/start`. Launcher создаёт локальную `.venv`, обновляет в ней `pip`, `setuptools` и `wheel`, ставит `requirements.txt` и запускает `main.py`; глобальные пакеты не используются. Ручной запуск после подготовки окружения:
+Then send `/start` to the bot. The launcher creates a local `.venv`, upgrades `pip`, `setuptools`, and `wheel` inside it, installs `requirements.txt`, and starts `main.py`; global Python packages are not used. Manual launch after the environment is prepared:
 
 ```powershell
 .\.venv\Scripts\python.exe main.py
 ```
 
-## ⚙️ Конфигурация
+## ⚙️ Configuration
 
-Настройки читаются из `config.json` (шаблон — [config.example.json](config.example.json)).
+Settings are read from `config.json` (template: [config.example.json](config.example.json)).
 
 ```json
 {
@@ -101,42 +101,42 @@ Copy-Item config.example.json config.json
 }
 ```
 
-| Переменная | По умолчанию | Описание |
+| Variable | Default | Description |
 | --- | --- | --- |
-| `bot_token` | обязательно | Token Telegram-бота |
-| `authorized_user_ids` | обязательно | User ID, которым разрешены команды и кнопки |
-| `notification_chat_ids` | обязательно | Личные чаты или группы, получающие уведомления |
-| `poll_interval_seconds` | `60` | Период сетевого обновления; минимум 30 |
-| `dashboard_refresh_seconds` | `10` | Период перерисовки countdown; минимум 10 |
-| `utc_offset_hours` | `0` | UTC по умолчанию, целое число от `-12` до `14` |
-| `database_path` | `data/clash_ninja_bot.sqlite3` | Путь к локальной SQLite-базе |
-| `data_source` | `clash_ninja` | `clash_ninja` или `json` |
-| `json_accounts_directory` | `accounts` | Папка с JSON-файлами аккаунтов |
-| `clash_ninja.tracker_url` | `https://www.clash.ninja/upgrade-tracker` | URL Upgrade Tracker |
-| `clash_ninja.cookie_header` | нет | Полное значение HTTP-заголовка `Cookie` |
-| `clash_ninja.request_timeout_seconds` | `30` | Timeout запроса; минимум 5 |
+| `bot_token` | required | Telegram bot token |
+| `authorized_user_ids` | required | User IDs allowed to use commands and buttons |
+| `notification_chat_ids` | required | Private chats or groups that receive alerts |
+| `poll_interval_seconds` | `60` | Network refresh period; minimum 30 |
+| `dashboard_refresh_seconds` | `10` | Countdown redraw period; minimum 10 |
+| `utc_offset_hours` | `0` | Default UTC offset, an integer from `-12` through `14` |
+| `database_path` | `data/clash_ninja_bot.sqlite3` | Local SQLite database path |
+| `data_source` | `clash_ninja` | `clash_ninja` or `json` |
+| `json_accounts_directory` | `accounts` | Folder containing account JSON files |
+| `clash_ninja.tracker_url` | `https://www.clash.ninja/upgrade-tracker` | Upgrade Tracker URL |
+| `clash_ninja.cookie_header` | none | Complete HTTP `Cookie` header value |
+| `clash_ninja.request_timeout_seconds` | `30` | Request timeout; minimum 5 |
 
-### Команды
+### Commands
 
-| Команда | Описание |
+| Command | Description |
 | --- | --- |
-| `/start` | Открыть главное меню |
-| `/menu` | Открыть главное меню |
-| `/status` | Сразу открыть dashboard всех аккаунтов |
+| `/start` | Open the main menu |
+| `/menu` | Open the main menu |
+| `/status` | Open the all-account dashboard directly |
 
-В меню доступны текущие улучшения, выбор аккаунта, настройка UTC, Clash Ninja, Clash of Clans и GitHub.
+The menu provides current upgrades, account selection, UTC settings, and Clash Ninja, Clash of Clans, and GitHub links.
 
-### Источник Clash Ninja: cookie
+### Clash Ninja source: cookie
 
-1. Войдите в Clash Ninja и откройте [Upgrade Tracker](https://www.clash.ninja/upgrade-tracker).
-2. Нажмите `F12`, откройте **Network** и обновите страницу.
-3. Выберите успешный запрос `upgrade-tracker`.
-4. В **Headers** → **Request Headers** скопируйте всё значение после `Cookie:` в одну строку.
-5. Вставьте его в `clash_ninja.cookie_header`.
+1. Sign in to Clash Ninja and open [Upgrade Tracker](https://www.clash.ninja/upgrade-tracker).
+2. Press `F12`, open **Network**, and reload the page.
+3. Select the successful `upgrade-tracker` request.
+4. Under **Headers** → **Request Headers**, copy the complete value after `Cookie:` as one line.
+5. Paste it into `clash_ninja.cookie_header`.
 
-Если `cookie_header` пуст или содержит заглушку `PUT_...`, бот пытается найти cookie в браузере, где вы вошли в Clash Ninja (AppData, только Windows); если браузер открыт, закройте его и повторите запуск. Cookie имеет срок действия: если лог сообщает, что Clash Ninja отклонил сессию, войдите заново и замените значение.
+If `cookie_header` is empty or still contains the `PUT_...` placeholder, the bot tries to find the cookie in a browser where you are signed in to Clash Ninja (AppData, Windows only); if the browser is open, close it and restart. Cookies expire: if the log says Clash Ninja rejected the session, sign in again and replace the value.
 
-### Источник JSON (без Clash Ninja)
+### JSON source (without Clash Ninja)
 
 ```json
 {
@@ -145,77 +145,77 @@ Copy-Item config.example.json config.json
 }
 ```
 
-Положите исходный JSON каждой деревни отдельным файлом в `accounts/`. Ничего добавлять не нужно: ником считается имя файла без `.json`, например `accounts/Greatness.json`. Builder Base (`buildings2`, `units2` и другие поля с суффиксом `2`) не учитывается. Cookie и доступ к сайту в этом режиме не нужны; при замене JSON-файла бот обнаружит завершение активного таймера на следующем цикле опроса.
+Put one original JSON export per village in `accounts/`. Nothing needs to be added: the account name is the filename without `.json`, for example `accounts/Greatness.json`. Builder Base fields (`buildings2`, `units2`, and other `2`-suffix fields) are ignored. Cookie and website access are not required in this mode; when you replace an account JSON file, the bot detects completed active timers on the next polling cycle.
 
-### Автообновление
+### Automatic updates
 
-`start.bat` проверяет обновления перед запуском:
+`start.bat` checks for updates before launch:
 
-- в Git-клоне: `git fetch` и `git pull --ff-only`;
-- любые записи в `git status --porcelain`, включая untracked-файлы, пропускают update;
-- без Git или в распакованном ZIP launcher скачивает свежий архив через PowerShell;
-- при ошибке сети запускается уже установленная версия.
+- in a Git clone: `git fetch` followed by `git pull --ff-only`;
+- any output from `git status --porcelain`, including untracked files, skips the update;
+- without Git, or from an extracted ZIP, the launcher downloads a fresh archive through PowerShell;
+- when the network update fails, the installed version still starts.
 
-Сохраняются `config.json`, `.venv`, `data/` и `logs/`. ZIP-режим может заменить остальные файлы проекта, поэтому не храните в его каталоге несохранённые правки.
+`config.json`, `.venv`, `data/`, and `logs/` are preserved. ZIP mode may replace every other project file, so do not keep uncommitted edits in that directory.
 
-### Решение проблем
+### Troubleshooting
 
-| Симптом | Что проверить |
+| Symptom | Check |
 | --- | --- |
-| Clash Ninja отклонил сессию | Получите новый `cookie_header` |
-| Бот игнорирует команды | `bot_token` и свой ID в `authorized_user_ids` |
-| Нет уведомлений | `notification_chat_ids`, права бота и `logs/error.log` |
-| Dashboard показывает старые данные | Доступность Clash Ninja и `poll_interval_seconds` |
-| Update пропущен | `git status --short`, включая untracked-файлы |
-| Не создаётся `.venv` | Наличие именно Python 3.14 для `py -3.14` |
+| Clash Ninja rejects the session | Obtain a new `cookie_header` |
+| The bot ignores commands | `bot_token` and your ID in `authorized_user_ids` |
+| No alerts arrive | `notification_chat_ids`, bot permissions, and `logs/error.log` |
+| The dashboard is stale | Clash Ninja availability and `poll_interval_seconds` |
+| The update is skipped | `git status --short`, including untracked files |
+| `.venv` is not created | Python 3.14 is available for `py -3.14` |
 
-## 🗂️ Структура проекта
+## 🗂️ Project structure
 
 ```text
 .
-├── main.py                 # точка входа, логирование, запуск бота
-├── start.bat               # launcher: обновление, .venv, зависимости, запуск
+├── main.py                 # entry point, logging, bot startup
+├── start.bat               # launcher: update, .venv, dependencies, run
 ├── requirements.txt        # aiogram, aiohttp, beautifulsoup4, cryptography
-├── config.example.json     # шаблон настроек
-├── accounts/               # JSON-экспорты игры (локально, не в Git)
-├── data/                   # SQLite-база (локально, не в Git)
-├── logs/                   # bot.log, error.log (локально, не в Git)
+├── config.example.json     # settings template
+├── accounts/               # game JSON exports (local, not in Git)
+├── data/                   # SQLite database (local, not in Git)
+├── logs/                   # bot.log, error.log (local, not in Git)
 └── app/
-    ├── config.py           # загрузка и проверка config.json
-    ├── models.py           # модели данных
-    ├── monitor.py          # опрос источника и обнаружение завершений
+    ├── config.py           # loading and validating config.json
+    ├── models.py           # data models
+    ├── monitor.py          # source polling and completion detection
     ├── storage.py          # SQLite
-    ├── presentation.py     # форматирование сообщений и dashboard
-    ├── telegram_ui.py      # команды, меню, кнопки
-    ├── timefmt.py          # форматирование времени
-    └── clash_ninja/        # клиент, парсер, cookie, JSON-источник, игровые данные
+    ├── presentation.py     # message and dashboard formatting
+    ├── telegram_ui.py      # commands, menu, buttons
+    ├── timefmt.py          # time formatting
+    └── clash_ninja/        # client, parser, cookies, JSON source, game data
 ```
 
-## 🔒 Безопасность и приватность
+## 🔒 Security & privacy
 
-| Путь | Содержимое |
+| Path | Contents |
 | --- | --- |
-| `config.json` | Telegram token и Clash Ninja cookie; исключён из Git |
-| `accounts/*.json` | Экспорты игры; исключены из Git |
-| `data/clash_ninja_bot.sqlite3` | Последний snapshot, сообщения dashboards и timezone |
-| `logs/bot.log` | Подробный rotating log |
-| `logs/error.log` | Только ошибки |
+| `config.json` | Telegram token and Clash Ninja cookie; excluded from Git |
+| `accounts/*.json` | Game exports; excluded from Git |
+| `data/clash_ninja_bot.sqlite3` | Last snapshot, dashboard messages, and timezones |
+| `logs/bot.log` | Detailed rotating log |
+| `logs/error.log` | Errors only |
 
-Не публикуйте эти файлы. Сохраняйте `config.json` и `data/`, чтобы перенести установку без потери настроек и сохранённых экранов.
+Do not publish these files. Keep `config.json` and `data/` when moving an installation to preserve settings and saved screens.
 
-## ⚠️ Ограничения
+## ⚠️ Limitations
 
-- Парсер зависит от текущей HTML/feed-структуры Clash Ninja и может потребовать обновления после изменений сайта.
-- Поддерживается только Windows.
-- Builder Base не учитывается.
+- The parser depends on Clash Ninja's current HTML and feed structure and may need updates when the site changes.
+- Only Windows is supported.
+- Builder Base is not tracked.
 
-## 📄 Лицензия
+## 📄 License
 
 [MIT](LICENSE).
 
-## 💬 Поддержка
+## 💬 Support
 
-Можно [форкнуть репозиторий](https://github.com/soroka01/Clash-Of-Clans-Telegram-Clash-Ninja-notifyer/fork) и доработать под себя. Если проект пригодился, поставьте [Star](https://github.com/soroka01/Clash-Of-Clans-Telegram-Clash-Ninja-notifyer) — так я увижу, что он был кому-то полезен.
+Feel free to [fork this repository](https://github.com/soroka01/Clash-Of-Clans-Telegram-Clash-Ninja-notifyer/fork) and adapt it. If it helped you, leave a [Star](https://github.com/soroka01/Clash-Of-Clans-Telegram-Clash-Ninja-notifyer) so I can see it was useful.
 
 ---
 
