@@ -8,6 +8,14 @@
   "database_path": "data/clash_ninja_bot.sqlite3",
   "data_source": "json",
   "json_accounts_directory": "accounts",
+  "announce_on_timer": true,
+  "announce_max_age_hours": 24,
+  "failure_alert_threshold": 3,
+  "json_import": {
+    "max_megabytes": 5,
+    "idle_seconds": 3,
+    "delete_messages": true
+  },
   "clash_ninja": {
     "tracker_url": "https://www.clash.ninja/upgrade-tracker",
     "cookie_header": "PUT_FULL_COOKIE_HEADER_FROM_LOGGED_IN_CLASH_NINJA_HERE",

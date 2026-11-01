@@ -1,0 +1,218 @@
+from __future__ import annotations
+
+import re
+from datetime import datetime, timezone
+
+from bs4 import BeautifulSoup, Tag
+
+from app.domain.models import Category, HELPER_NAMES, HelperState, HelperStatus, Snapshot, Upgrade, Village
+
+
+class TrackerParseError(ValueError):
+    pass
+
+
+_COMPLETE_DATE = re.compile(r"Complete:\s*(.+)$")
+_ORDINAL = re.compile(r"(\d{1,2})(?:st|nd|rd|th)")
+_HELPER_FIELDS = (("la", "Lab Assistant"), ("ba", "Builder's Apprentice"), ("a", "Alchemist"))
+
+
+def _clean(value: str) -> str:
+    return " ".join(value.split())
+
+
+class TrackerParser:
+    """Parses the logged-in Clash Ninja Upgrade Tracker overview plus its live timer feed.
+
+    The page keeps timer cells blank and fills them client-side from /feed/villages.json, so the
+    feed is the source of truth for finish times and helper assignments.
+    """
+
+    def parse(self, html: str, feed: list[dict] | None = None, now: datetime | None = None) -> Snapshot:
+        soup = BeautifulSoup(html, "html.parser")
+        villages: list[Village] = []
+        upgrades: list[Upgrade] = []
+        feed_finishes = self._feed_finishes(feed)
+        for village in soup.select("div.village-overview[id]"):
+            village_id = village.get("id", "")
+            if not village_id or village_id == "overall-timers":
+                continue
+            name = self._village_name(village)
+            villages.append(Village(village_id, name))
+            upgrades.extend(self._rows_from_village(village, village_id, name, feed_finishes))
+        if not villages:
+            raise TrackerParseError("На странице не найдены деревни. Возможно, изменилась разметка или истекла сессия.")
+        fetched_at = now or datetime.now(timezone.utc)
+        return Snapshot(
+            villages=tuple(villages),
+            upgrades=tuple(upgrades),
+            helpers=tuple(self._helper_statuses(feed, upgrades, fetched_at)),
+            fetched_at=fetched_at,
+        )
+
+    # ----- page structure ----------------------------------------------------------
+
+    @staticmethod
+    def _level_text(cell: Tag) -> str:
+        """Keep the visual level transition that is represented by an icon in HTML."""
+        text = _clean(cell.get_text(" ", strip=True))
+        has_arrow = bool(cell.select_one("i.fa-arrow-right, i[class*='arrow-right']"))
+        values = re.findall(r"\d+", text)
+        if has_arrow and len(values) >= 2:
+            return f"{values[0]} → {values[-1]}"
+        return text
+
+    @staticmethod
+    def _village_name(village: Tag) -> str:
+        heading = village.find("h2", recursive=False)
+        if not heading:
+            return village.get("id", "Unknown village")
+        link = heading.find("a")
+        if link:
+            text = " ".join(str(part).strip() for part in link.contents if isinstance(part, str) and part.strip())
+            if text:
+                return _clean(text)
+        return _clean(heading.get_text(" ", strip=True)).split("  ")[0]
+
+    @staticmethod
+    def _category_for(table: Tag, entity: str) -> str | None:
+        if entity.casefold() in HELPER_NAMES:
+            # A Helper must be inside a real upgrade row. Availability/cooldown counters are
+            # deliberately ignored because they do not have the Entity/Level/Remaining table.
+            return Category.HELPER
+        heading = table.find_previous(["h4", "h3"])
+        label = _clean(heading.get_text(" ", strip=True)).casefold() if heading else ""
+        if "laboratory" in label or label.startswith("lab "):
+            return Category.LAB
+        if "pet" in label:
+            return Category.PET
+        if "builder" in label and "upgrade" in label:
+            return Category.BUILDER
+        return None
+
+    @staticmethod
+    def _finish_at(row: Tag, feed_finish_at: datetime | None = None) -> datetime | None:
+        if feed_finish_at:
+            return feed_finish_at
+        progress = row.select_one("[role='progressbar'][title]")
+        if progress:
+            raw = progress.get("title", "").strip()
+            if raw.isdigit():
+                return datetime.fromtimestamp(int(raw) / 1000, tz=timezone.utc)
+
+        remaining = row.select_one("td:nth-of-type(3) [title]")
+        title = remaining.get("title", "") if remaining else ""
+        match = _COMPLETE_DATE.search(title)
+        if not match:
+            return None
+        source = _ORDINAL.sub(r"\1", match.group(1))
+        try:
+            # Clash Ninja currently renders e.g. "Tue 28th Jul 2026 @ 10:41".
+            return datetime.strptime(source, "%a %d %b %Y @ %H:%M").replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+
+    def _rows_from_village(
+        self,
+        village: Tag,
+        village_id: str,
+        village_name: str,
+        feed_finishes: dict[str, datetime],
+    ) -> list[Upgrade]:
+        upgrades: list[Upgrade] = []
+        for table in village.find_all("table"):
+            # The tracker page contains both Home Village (-hv) and Builder Base
+            # (-bb) sections inside one village overview. Builder Base is outside
+            # this bot's scope.
+            details = table.find_parent("div", class_="upgrade-details")
+            if details and str(details.get("id", "")).endswith("-bb"):
+                continue
+            headers = [_clean(cell.get_text(" ", strip=True)).casefold() for cell in table.find_all("th")]
+            if "entity" not in headers or "remaining" not in headers:
+                continue
+            for row in table.find_all("tr"):
+                cells = row.find_all("td", recursive=False)
+                if len(cells) < 3:
+                    continue
+                entity = _clean(cells[0].get_text(" ", strip=True))
+                level = self._level_text(cells[1])
+                if not entity or not level:
+                    continue
+                category = self._category_for(table, entity)
+                if not category:
+                    continue
+                timer = cells[2].find(id=True)
+                timer_id = timer.get("id") if timer else None
+                finish_at = self._finish_at(row, feed_finishes.get(timer_id or ""))
+                # Current Clash Ninja markup leaves timer cells blank and fills them
+                # client-side from /feed/villages.json. Do not present a phantom
+                # "active upgrade" if its live feed record is absent.
+                if not finish_at:
+                    continue
+                upgrades.append(
+                    Upgrade(
+                        village_id=village_id,
+                        village_name=village_name,
+                        category=category,
+                        entity=entity,
+                        level=level,
+                        finish_at=finish_at,
+                        source_id=timer_id,
+                    )
+                )
+        return upgrades
+
+    # ----- live feed ---------------------------------------------------------------
+
+    @staticmethod
+    def _feed_finishes(feed: list[dict] | None) -> dict[str, datetime]:
+        """Map DOM timer IDs (tag-eid-index-rem) to completion timestamps."""
+        finishes: dict[str, datetime] = {}
+        for village in feed or []:
+            village_id = village.get("tws")
+            if not village_id:
+                continue
+            for village_type in ("hb", "bb"):
+                upgrades = village.get(village_type, {})
+                for kind in ("b", "l", "p"):
+                    entries = upgrades.get(kind)
+                    if isinstance(entries, dict):
+                        entries = [entries]
+                    for entry in entries or []:
+                        try:
+                            key = f"{village_id}-{int(entry['eid'])}-{int(entry.get('i', 0))}-rem"
+                            finishes[key] = datetime.fromtimestamp(int(entry["cd"]) / 1000, tz=timezone.utc)
+                        except (KeyError, TypeError, ValueError, OSError):
+                            continue
+        return finishes
+
+    @staticmethod
+    def _helper_statuses(feed: list[dict] | None, upgrades: list[Upgrade], fetched_at: datetime) -> list[HelperStatus]:
+        """Get actual helper assignment state from the live Clash Ninja feed."""
+        upgrades_by_source = {upgrade.source_id: upgrade for upgrade in upgrades if upgrade.source_id}
+        statuses: list[HelperStatus] = []
+        for village in feed or []:
+            village_id, village_name, helpers = village.get("tws"), village.get("vn"), village.get("h")
+            if not village_id or not village_name or not isinstance(helpers, dict):
+                continue
+            for field, helper_name in _HELPER_FIELDS:
+                data = helpers.get(field)
+                if not isinstance(data, dict):
+                    continue
+                availability = data.get("a") if isinstance(data.get("a"), dict) else {}
+                try:
+                    until = datetime.fromtimestamp(int(availability["te"]), tz=timezone.utc)
+                except (KeyError, TypeError, ValueError, OSError):
+                    until = None
+                target_data = data.get("t") if isinstance(data.get("t"), dict) else None
+                if target_data:
+                    source_id = f"{village_id}-{target_data.get('eid')}-{target_data.get('i', 0)}-rem"
+                    upgrade = upgrades_by_source.get(source_id)
+                    target = upgrade.target_label if upgrade else "активное улучшение"
+                    state = HelperState.ASSIGNED
+                elif until and until > fetched_at:
+                    target, state = None, HelperState.COOLDOWN
+                else:
+                    target, state = None, HelperState.AVAILABLE
+                statuses.append(HelperStatus(village_id, village_name, helper_name, state, target, until))
+        return statuses

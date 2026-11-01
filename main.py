@@ -2,141 +2,25 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import sys
-from ctypes import byref, c_uint, windll
-from logging.handlers import RotatingFileHandler
-from pathlib import Path
 
-from aiogram import Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
-
-from app.clash_ninja.client import ClashNinjaClient
-from app.clash_ninja.json_source import JsonAccountSource
-from app.config import Settings, load_settings
-from app.monitor import UpgradeMonitor
-from app.storage import Storage
-from app.telegram_ui import (
-    DashboardService,
-    NotificationService,
-    dashboard_refresh_loop,
-    make_router,
-)
+from app.application import Application
+from app.logging_setup import LoggingConfigurator
 
 
-class ColorFormatter(logging.Formatter):
-    COLORS = {
-        logging.DEBUG: "\033[36m",
-        logging.INFO: "\033[32m",
-        logging.WARNING: "\033[33m",
-        logging.ERROR: "\033[31m",
-        logging.CRITICAL: "\033[35m",
-    }
-    RESET = "\033[0m"
-
-    def __init__(self, *args: object, use_colors: bool = True, **kwargs: object) -> None:
-        super().__init__(*args, **kwargs)
-        self._use_colors = use_colors
-
-    def format(self, record: logging.LogRecord) -> str:
-        message = super().format(record)
-        if not self._use_colors:
-            return message
-        return f"{self.COLORS.get(record.levelno, '')}{message}{self.RESET}"
-
-
-def _console_supports_colors() -> bool:
-    """Enable ANSI on supported Windows consoles; otherwise keep logs clean."""
-    if not sys.stdout.isatty():
-        return False
-    if os.name != "nt":
-        return True
+def main() -> int:
+    LoggingConfigurator().configure()
     try:
-        stdout_handle = windll.kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
-        mode = c_uint()
-        if not windll.kernel32.GetConsoleMode(stdout_handle, byref(mode)):
-            return False
-        return bool(windll.kernel32.SetConsoleMode(stdout_handle, mode.value | 0x0004))
-    except (AttributeError, OSError):
-        return False
-
-
-LOG_DATE_FORMAT = "%d %H:%M:%S"
-LOG_FORMAT = "%(asctime)s | %(levelname)-7s | %(name)-15s | %(message)s"
-
-
-def build_source(settings: Settings) -> ClashNinjaClient | JsonAccountSource:
-    if settings.data_source == "clash_ninja" and settings.clash_ninja:
-        return ClashNinjaClient(settings.clash_ninja)
-    return JsonAccountSource(settings.json_accounts_directory)
-
-
-def configure_logging(log_directory: Path = Path("logs")) -> None:
-    log_directory.mkdir(exist_ok=True)
-    plain = logging.Formatter(LOG_FORMAT, datefmt=LOG_DATE_FORMAT)
-
-    console = logging.StreamHandler()
-    console.setLevel(logging.INFO)
-    console.setFormatter(ColorFormatter(LOG_FORMAT, datefmt=LOG_DATE_FORMAT, use_colors=_console_supports_colors()))
-
-    def rotating(name: str, level: int) -> RotatingFileHandler:
-        handler = RotatingFileHandler(log_directory / name, maxBytes=5_000_000, backupCount=5, encoding="utf-8")
-        handler.setLevel(level)
-        handler.setFormatter(plain)
-        return handler
-
-    logging.basicConfig(
-        level=logging.DEBUG,
-        handlers=[console, rotating("bot.log", logging.DEBUG), rotating("error.log", logging.ERROR)],
-    )
-    logging.getLogger("aiohttp").setLevel(logging.WARNING)
-    logging.getLogger("aiogram").setLevel(logging.WARNING)
-
-
-async def run() -> None:
-    settings = load_settings()
-    storage = Storage(settings.database_path)
-    client = build_source(settings)
-    await client.start()
-    bot = Bot(settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    notifier = NotificationService(bot, storage, settings.notification_chat_ids, settings.utc_offset_hours)
-    monitor = UpgradeMonitor(client, storage, settings.poll_interval_seconds, notifier.send)
-    await monitor.restore_cached_snapshot()
-    dashboard = DashboardService(
-        bot,
-        storage,
-        monitor,
-        settings.utc_offset_hours,
-        settings.notification_chat_ids,
-    )
-    dispatcher = Dispatcher()
-    dispatcher.include_router(make_router(dashboard, settings.authorized_user_ids))
-    refresh_stop = asyncio.Event()
-    monitor_task = asyncio.create_task(monitor.run(), name="clash-ninja-monitor")
-    dashboard_task = asyncio.create_task(
-        dashboard_refresh_loop(dashboard, settings.dashboard_refresh_seconds, refresh_stop),
-        name="dashboard-refresh",
-    )
-
+        application = Application.from_config()
+    except RuntimeError as error:  # configuration problems are reported in plain words, without a traceback
+        logging.getLogger("main").error("%s", error)
+        return 1
     try:
-        await bot.delete_webhook(drop_pending_updates=False)
-        await dashboard.restore_menus_after_restart()
-        await dispatcher.start_polling(bot, allowed_updates=dispatcher.resolve_used_update_types())
-    finally:
-        monitor.stop()
-        refresh_stop.set()
-        monitor_task.cancel()
-        dashboard_task.cancel()
-        await asyncio.gather(monitor_task, dashboard_task, return_exceptions=True)
-        await client.close()
-        await storage.close()
-        await bot.session.close()
+        asyncio.run(application.run())
+    except (KeyboardInterrupt, SystemExit):
+        pass
+    return 0
 
 
 if __name__ == "__main__":
-    configure_logging()
-    try:
-        asyncio.run(run())
-    except (KeyboardInterrupt, SystemExit):
-        pass
+    sys.exit(main())
