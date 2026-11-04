@@ -86,14 +86,19 @@ class AccountService:
             self._parser.parse(validated, "check")
         return validated
 
-    async def save_export(self, payload: dict[str, Any], preferred_name: str | None) -> SaveResult:
-        """Store an export. The same player tag always updates the existing account in place."""
+    async def save_export(
+        self, payload: dict[str, Any], preferred_name: str | None, replace_village_id: str | None = None
+    ) -> SaveResult:
+        """Store an export. The same player tag always updates the existing account in place;
+        ``replace_village_id`` additionally lets the user overwrite a chosen account with another tag."""
         store = self._require_store()
         content = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         tag = export_tag(payload)
 
         def write() -> tuple[AccountRecord, bool, bool]:
             existing = store.find_by_tag(tag)
+            if existing is None and replace_village_id:
+                existing = store.find_by_village_id(replace_village_id)
             if existing is not None:
                 return store.save(existing.name, content), False, False
             wanted = sanitize_name(preferred_name or "") or sanitize_name(tag.lstrip("#") if tag else "") or "Аккаунт"

@@ -151,6 +151,18 @@ class TelegramGateway:
             return False
         return True
 
+    async def delete_many(self, chat_id: int, message_ids: list[int]) -> bool:
+        """Delete messages in batches of 100 (the Bot API limit). True only if every batch succeeded."""
+        everything = True
+        for start in range(0, len(message_ids), 100):
+            batch = message_ids[start : start + 100]
+            try:
+                await self._bot.delete_messages(chat_id=chat_id, message_ids=batch)
+            except (TelegramBadRequest, TelegramForbiddenError, TelegramNetworkError, TelegramServerError, TelegramRetryAfter) as error:
+                logger.debug("Could not delete %s messages in chat %s: %s", len(batch), chat_id, error)
+                everything = False
+        return everything
+
     # ----- files -------------------------------------------------------------------
 
     async def download(self, document: Document) -> bytes:

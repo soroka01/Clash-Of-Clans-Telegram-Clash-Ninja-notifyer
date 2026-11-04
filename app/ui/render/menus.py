@@ -12,7 +12,6 @@ from app.ui.render.common import (
     RenderContext,
     Screen,
     button,
-    finish_text,
     markup,
     remaining_text,
     rows,
@@ -140,16 +139,3 @@ class SettingsRenderer:
             ),
         )
         return Screen(text, keyboard)
-
-
-def format_size(size: int) -> str:
-    return f"{size / 1024:.1f} КБ" if size < 1024 * 1024 else f"{size / (1024 * 1024):.1f} МБ"
-
-
-def describe_nearest(ctx: RenderContext, village_id: str) -> str | None:
-    timed = [item for item in ctx.snapshot.upgrades_of(village_id) if item.finish_at]
-    if not timed:
-        return None
-    nearest = min(timed, key=lambda item: item.sort_key)
-    return f"{escape(nearest.entity)} {escape(nearest.level)} — {remaining_text(nearest, ctx.now)} (🏁 {finish_text(nearest, ctx.utc_offset)})"
-

@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import timedelta
 from html import escape
 
 from aiogram.types import InlineKeyboardMarkup
 
 from app.domain.models import HelperState, HelperStatus, Upgrade, Village
-from app.domain.timefmt import format_age, format_local
+from app.domain.timefmt import format_age, format_local, offset_label
 from app.ui import views
 from app.ui.render.common import (
     CATEGORY_META,
@@ -15,6 +14,7 @@ from app.ui.render.common import (
     DEFAULT_HELPER_ICON,
     HELPER_ICONS,
     OPEN_GAME_URL,
+    STALE_AFTER,
     TRACKER_URL,
     RenderContext,
     Screen,
@@ -24,13 +24,11 @@ from app.ui.render.common import (
     paginate,
     remaining_text,
     rows,
-    time_label,
     utf16_len,
 )
 from app.ui.views import ViewState
 
 PAGE_BUDGET = 3900  # UTF-16 units of raw HTML; Telegram allows 4096 and HTML tags count against us here
-STALE_AFTER = timedelta(hours=24)
 EMPTY_BODY_LOADING = "Данные ещё загружаются."
 
 
@@ -74,7 +72,7 @@ class DashboardRenderer:
             lines.append(f'<a href="{TRACKER_URL}">🌐 Открыть Clash Ninja Upgrade Tracker</a>')
         if subtitle:
             lines.append(subtitle)
-        lines.append(f"🕒 <code>{updated} {time_label(ctx.utc_offset)}</code>")
+        lines.append(f"🕒 <code>{updated} {offset_label(ctx.utc_offset)}</code>")
         if ctx.health:
             since = format_local(ctx.health.since, ctx.utc_offset, "%H:%M")
             lines.append(f"⚠️ <i>Данные не обновляются с {since}: {escape(ctx.health.reason)}</i>")

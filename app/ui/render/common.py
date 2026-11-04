@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
+from html import escape
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.domain.models import Category, Snapshot, Upgrade
-from app.domain.timefmt import format_duration, format_local, offset_label
+from app.domain.timefmt import format_duration, format_local
 from app.services.health import HealthNotice
 
 TRACKER_URL = "https://www.clash.ninja/upgrade-tracker"
@@ -28,6 +29,7 @@ HELPER_ICONS = {
 DEFAULT_HELPER_ICON = "🤖"
 
 CALLBACK_LIMIT = 64  # bytes, imposed by Telegram
+STALE_AFTER = timedelta(hours=24)  # an export older than this is flagged as outdated
 
 
 def utf16_len(text: str) -> int:
@@ -90,8 +92,20 @@ def finish_text(upgrade: Upgrade, utc_offset: int, pattern: str = "%d.%m · %H:%
     return format_local(upgrade.finish_at, utc_offset, pattern) if upgrade.finish_at else "—"
 
 
-def time_label(utc_offset: int) -> str:
-    return offset_label(utc_offset)
+def format_size(size: int) -> str:
+    return f"{size / 1024:.1f} КБ" if size < 1024 * 1024 else f"{size / (1024 * 1024):.1f} МБ"
+
+
+def describe_nearest(ctx: RenderContext, village_id: str) -> str | None:
+    """"Entity level — time left (finish time)" of the account's nearest upgrade, ready for HTML."""
+    timed = [item for item in ctx.snapshot.upgrades_of(village_id) if item.finish_at]
+    if not timed:
+        return None
+    nearest = min(timed, key=lambda item: item.sort_key)
+    return (
+        f"{escape(nearest.entity)} {escape(nearest.level)} — {remaining_text(nearest, ctx.now)} "
+        f"(🏁 {finish_text(nearest, ctx.utc_offset)})"
+    )
 
 
 def paginate(items: list[str], separator: str, budget: int) -> list[str]:

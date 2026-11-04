@@ -8,6 +8,7 @@ from datetime import timedelta
 from pathlib import Path
 
 from aiogram import Bot, Dispatcher
+from aiogram.exceptions import TelegramNetworkError, TelegramRetryAfter, TelegramServerError
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
@@ -49,6 +50,16 @@ logger = logging.getLogger(__name__)
 # The database version that introduced the announcement ledger. A database older than this has no
 # record of what was announced, so on its first start everything already finished is muted.
 LEDGER_SCHEMA_VERSION = 2
+STARTUP_RETRY_SECONDS = (5, 10, 20, 40, 60)  # pauses while Telegram is unreachable at start, then 60 s forever
+
+
+@dataclass(frozen=True, slots=True)
+class _Repositories:
+    snapshots: SnapshotRepository
+    menus: MenuRepository
+    alerts: AlertRepository
+    preferences: ChatPreferences
+    ledger: AnnouncementLedger
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,56 +91,72 @@ class Application:
         settings = self._settings
         database = Database(settings.database_path)
         bot = bot or Bot(settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-
-        # --- data -------------------------------------------------------------------
-        snapshots = SnapshotRepository(database)
-        menus = MenuRepository(database)
-        alerts = AlertRepository(database)
-        preferences = ChatPreferences(database, settings.utc_offset_hours)
-        ledger = AnnouncementLedger(database)
-
-        catalog = GameCatalog()
+        repositories = self._build_repositories(database)
         store = AccountStore(settings.json_accounts_directory) if settings.uses_json_accounts else None
+        catalog = GameCatalog()
         parser = AccountJsonParser(catalog)
         source = SourceFactory(settings, store, catalog).build()
 
-        # --- services ---------------------------------------------------------------
         gateway = TelegramGateway(bot)
+        monitor = self._build_monitor(source, repositories, gateway)
+        accounts = AccountService(store, parser if store else None, monitor)
+        imports = ImportService(accounts, settings.json_import)
+        menu, dispatcher = self._build_telegram(gateway, repositories, monitor, accounts, imports)
+        return Runtime(settings, bot, dispatcher, database, source, monitor, menu, accounts, imports)
+
+    def _build_repositories(self, database: Database) -> _Repositories:
+        return _Repositories(
+            snapshots=SnapshotRepository(database),
+            menus=MenuRepository(database),
+            alerts=AlertRepository(database),
+            preferences=ChatPreferences(database, self._settings.utc_offset_hours),
+            ledger=AnnouncementLedger(database),
+        )
+
+    def _build_monitor(self, source: SnapshotSource, repositories: _Repositories, gateway: TelegramGateway) -> UpgradeMonitor:
+        settings = self._settings
         notifier = NotificationService(
             gateway,
-            preferences,
-            menus,
-            alerts,
+            repositories.preferences,
+            repositories.menus,
+            repositories.alerts,
             NotificationRenderer(clash_ninja_mode=not settings.uses_json_accounts),
             settings.notification_chat_ids,
         )
-        monitor = UpgradeMonitor(
+        detector = EventDetector(
+            settings.poll_interval_seconds,
+            settings.announce_on_timer,
+            timedelta(hours=settings.announce_max_age_hours),
+        )
+        return UpgradeMonitor(
             source,
-            snapshots,
-            ledger,
-            EventDetector(
-                settings.poll_interval_seconds,
-                settings.announce_on_timer,
-                timedelta(hours=settings.announce_max_age_hours),
-            ),
+            repositories.snapshots,
+            repositories.ledger,
+            detector,
             notifier,
             SourceHealth(settings.failure_alert_threshold),
             settings.poll_interval_seconds,
             settings.announce_on_timer,
         )
-        accounts = AccountService(store, parser if store else None, monitor)
-        imports = ImportService(accounts, settings.json_import)
 
-        # --- telegram ---------------------------------------------------------------
-        screens = ScreenFactory(settings, monitor, preferences, accounts)
-        menu = MenuService(gateway, screens, menus, alerts, settings.notification_chat_ids)
+    def _build_telegram(
+        self,
+        gateway: TelegramGateway,
+        repositories: _Repositories,
+        monitor: UpgradeMonitor,
+        accounts: AccountService,
+        imports: ImportService,
+    ) -> tuple[MenuService, Dispatcher]:
+        settings = self._settings
+        screens = ScreenFactory(settings, monitor, repositories.preferences, accounts)
+        menu = MenuService(gateway, screens, repositories.menus, repositories.alerts, settings.notification_chat_ids)
         imports.attach(ImportPresenter(gateway, screens, menu, settings.json_import.delete_messages))
         renames = RenameRequests()
         account_handlers = AccountHandlers(menu, accounts, imports, gateway, renames, settings.import_available)
         router = build_router(
             AccessControl(settings.authorized_user_ids),
             NavigationHandlers(menu, monitor),
-            SettingsHandlers(menu, preferences, settings),
+            SettingsHandlers(menu, repositories.preferences, settings),
             account_handlers,
             ImportHandlers(
                 imports, accounts, account_handlers, menu, screens, gateway, renames, settings.import_available
@@ -137,7 +164,7 @@ class Application:
         )
         dispatcher = Dispatcher()
         dispatcher.include_router(router)
-        return Runtime(settings, bot, dispatcher, database, source, monitor, menu, accounts, imports)
+        return menu, dispatcher
 
     async def run(self) -> None:
         runtime = self.build()
@@ -154,7 +181,7 @@ class Application:
         )
         dispatcher = runtime.dispatcher
         try:
-            await bot.delete_webhook(drop_pending_updates=False)
+            await self._retry_while_offline("delete_webhook", lambda: bot.delete_webhook(drop_pending_updates=False))
             await menu.restore_after_restart()
             await dispatcher.start_polling(bot, allowed_updates=dispatcher.resolve_used_update_types())
         finally:
@@ -167,3 +194,17 @@ class Application:
                 await source.close()
             await runtime.database.close()
             await bot.session.close()
+
+    @staticmethod
+    async def _retry_while_offline(what: str, call) -> None:
+        """Run a start-up Bot API call, waiting for the network instead of crashing (e.g. start.bat at login)."""
+        attempt = 0
+        while True:
+            try:
+                await call()
+                return
+            except (TelegramNetworkError, TelegramServerError, TelegramRetryAfter) as error:
+                pause = float(getattr(error, "retry_after", 0)) or STARTUP_RETRY_SECONDS[min(attempt, len(STARTUP_RETRY_SECONDS) - 1)]
+                attempt += 1
+                logger.warning("Telegram is unreachable (%s: %s); retrying in %.0f s", what, error, pause)
+                await asyncio.sleep(pause)

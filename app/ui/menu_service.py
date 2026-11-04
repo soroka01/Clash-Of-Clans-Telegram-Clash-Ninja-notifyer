@@ -45,6 +45,7 @@ class MenuService:
         self._startup_chat_ids = startup_chat_ids
         self._locks: defaultdict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._shown: dict[int, tuple[int, int]] = {}  # chat -> (message id, fingerprint of what it shows)
+        self._stored: dict[int, tuple[int, str]] = {}  # chat -> (message id, view) as last written to the database
 
     # ----- sending and editing -----------------------------------------------------
 
@@ -64,6 +65,7 @@ class MenuService:
             return False
         await self._menus.upsert(chat_id, message_id, view.serialize())
         self._shown[chat_id] = (message_id, screen.fingerprint)
+        self._stored[chat_id] = (message_id, view.serialize())
         logger.info("Menu sent: chat=%s message=%s view=%s", chat_id, message_id, view.serialize())
         return True
 
@@ -77,8 +79,11 @@ class MenuService:
             return Edit.UNCHANGED
         result = await self._gateway.edit(chat_id, message_id, screen.text, screen.markup)
         if result.shown:
-            await self._menus.update_view(chat_id, view.serialize())
-            await self._menus.remember_message(chat_id, message_id)
+            stored = (message_id, view.serialize())
+            if self._stored.get(chat_id) != stored:  # write only what changed: edits happen every minute
+                await self._menus.update_view(chat_id, stored[1])
+                await self._menus.remember_message(chat_id, message_id)
+                self._stored[chat_id] = stored
             self._shown[chat_id] = (message_id, screen.fingerprint)
             logger.debug("Menu edited: chat=%s message=%s view=%s", chat_id, message_id, view.serialize())
         return result
@@ -128,6 +133,7 @@ class MenuService:
                     await self._menus.forget_message(chat_id, message_id)
             await self._menus.remove(chat_id)
             self._shown.pop(chat_id, None)
+            self._stored.pop(chat_id, None)
             return await self._send(chat_id, ViewState(views.MAIN))
 
     async def show_in_menu(self, chat_id: int, view: ViewState, only_if_showing: str | None = None) -> None:
@@ -158,6 +164,7 @@ class MenuService:
             result = await self._edit(state.chat_id, state.message_id, view, skip_if_same=True)
             if result.needs_replacement and not await self._send(state.chat_id, view):
                 await self._menus.remove(state.chat_id)
+                self._stored.pop(state.chat_id, None)
 
     async def restore_after_restart(self) -> None:
         """Re-attach to each saved menu, replacing a deleted or uneditable message."""
@@ -173,6 +180,7 @@ class MenuService:
                     logger.info("Saved menu is unavailable; sending a replacement: chat=%s view=%s", state.chat_id, state.view)
                     if not await self._send(state.chat_id, view):
                         await self._menus.remove(state.chat_id)
+                        self._stored.pop(state.chat_id, None)
         for chat_id in self._startup_chat_ids:
             if chat_id not in known:
                 logger.info("No saved menu found; sending main menu: chat=%s", chat_id)

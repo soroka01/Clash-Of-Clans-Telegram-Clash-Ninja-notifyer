@@ -212,6 +212,10 @@ class AccountStore:
             trash.mkdir(exist_ok=True)
             stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
             destination = trash / f"{record.name} {stamp}.json.bak"
+            for number in range(2, 1000):  # never overwrite an older backup
+                if not destination.exists():
+                    break
+                destination = trash / f"{record.name} {stamp} ({number}).json.bak"
             record.path.replace(destination)
             self._cache.pop(record.path, None)
             return destination

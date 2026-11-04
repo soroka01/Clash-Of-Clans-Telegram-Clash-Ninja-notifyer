@@ -52,8 +52,7 @@ class ImportPresenter:
     async def _delete_user_messages(self, session: ImportSession) -> bool:
         if not self._delete_messages or not session.message_ids:
             return False
-        results = [await self._gateway.delete(session.chat_id, message_id) for message_id in session.message_ids]
-        return all(results)
+        return await self._gateway.delete_many(session.chat_id, session.message_ids)
 
     async def _show(self, session: ImportSession, screen: Screen, *, throttle: bool = False) -> None:
         async with session.ui_lock:

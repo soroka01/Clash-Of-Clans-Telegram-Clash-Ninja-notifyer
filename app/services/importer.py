@@ -21,6 +21,7 @@ NO_START_GRACE = 10.0  # how long text that does not begin with "{" waits for th
 ORPHAN_TTL = 10.0  # a long text that arrives before the chunk that starts the JSON is kept this long
 ORPHAN_MIN_LENGTH = 1000
 MAX_CHUNKS = 2000
+EARLY_PARSE_LIMIT = 400_000  # characters; above this only the idle timer concludes a paste
 _GENERIC_FILE_NAMES = re.compile(r"(village|export|data|clash.*|coc.*|account|json|file)(\s*\(\d+\))?", re.IGNORECASE)
 _STRUCTURE = re.compile(r'["\\{}\[\]]')
 # Top-level keys of a village export. A pasted text only *starts* an import when it opens with one of
@@ -117,6 +118,7 @@ class ImportSession:
     explicit: bool  # the user asked for an import (button or /import) rather than just pasting
     preferred_name: str | None
     source: str = "text"  # "text" or "file"
+    replace_village_id: str | None = None  # account this export replaces regardless of its tag
     chunks: dict[int, str] = field(default_factory=dict)  # Telegram message id -> text
     bot_message_ids: set[int] = field(default_factory=set)  # the bot's own messages between the chunks
     status_message_id: int | None = None  # owned by the UI
@@ -161,6 +163,7 @@ class ImportObserver(Protocol):
 class _Armed:
     preferred_name: str | None
     expires_at: float
+    replace_village_id: str | None = None
 
 
 class ImportService:
@@ -183,10 +186,19 @@ class ImportService:
 
     # ----- arming ------------------------------------------------------------------
 
-    def arm(self, chat_id: int, user_id: int, preferred_name: str | None = None) -> None:
-        """Treat the next text of this user as part of an export, whatever it looks like."""
+    def arm(
+        self,
+        chat_id: int,
+        user_id: int,
+        preferred_name: str | None = None,
+        replace_village_id: str | None = None,
+    ) -> None:
+        """Treat the next text of this user as part of an export, whatever it looks like.
+
+        ``replace_village_id`` names the account that the export is meant to replace even if the
+        player tag differs from the stored one."""
         name = sanitize_name(preferred_name or "") if preferred_name else None
-        self._armed[(chat_id, user_id)] = _Armed(name, time.monotonic() + ARMED_TTL)
+        self._armed[(chat_id, user_id)] = _Armed(name, time.monotonic() + ARMED_TTL, replace_village_id)
 
     def is_armed(self, chat_id: int, user_id: int) -> bool:
         armed = self._armed.get((chat_id, user_id))
@@ -261,6 +273,7 @@ class ImportService:
             user_id,
             explicit=armed is not None,
             preferred_name=armed.preferred_name if armed else None,
+            replace_village_id=armed.replace_village_id if armed else None,
         )
         self._sessions[key] = session
         now = time.monotonic()
@@ -284,12 +297,22 @@ class ImportService:
         key = (chat_id, user_id)
         armed = self._armed.pop(key, None)
         preferred = armed.preferred_name if armed and armed.preferred_name else self._name_from_file(filename)
-        session = ImportSession(chat_id, user_id, explicit=True, preferred_name=preferred, source="file")
+        session = ImportSession(
+            chat_id,
+            user_id,
+            explicit=True,
+            preferred_name=preferred,
+            source="file",
+            replace_village_id=armed.replace_village_id if armed else None,
+        )
         session.chunks[message_id] = ""
         previous = self._sessions.get(key)
         if previous is not None:
             await self._close(previous)
         self._sessions[key] = session
+        if len(data) > self._settings.max_bytes:  # Telegram may omit file_size, so check what arrived
+            await self._fail(session, self._too_large_message())
+            return
         try:
             text = data.decode("utf-8-sig")
         except UnicodeDecodeError:
@@ -328,6 +351,8 @@ class ImportService:
         async with session.lock:
             if session.closed:
                 return
+            if early and session.total_chars > EARLY_PARSE_LIMIT:
+                return  # big pastes are parsed once, after the pause, instead of after every part
             text = session.assemble()
             if early and not text.rstrip().endswith("}"):
                 return
@@ -373,7 +398,7 @@ class ImportService:
     async def _complete(self, session: ImportSession, payload: dict[str, Any]) -> None:
         try:
             validated = self._accounts.validate(payload)
-            result = await self._accounts.save_export(validated, session.preferred_name)
+            result = await self._accounts.save_export(validated, session.preferred_name, session.replace_village_id)
         except InvalidExport as error:
             await self._fail(session, str(error))
             return

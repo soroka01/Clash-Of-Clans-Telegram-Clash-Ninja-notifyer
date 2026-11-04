@@ -6,8 +6,7 @@ from app.domain.timefmt import format_local
 from app.services.accounts import AccountSummary, SaveResult
 from app.services.importer import ImportSession
 from app.ui import views
-from app.ui.render.common import RenderContext, Screen, button, markup, rows
-from app.ui.render.menus import describe_nearest, format_size
+from app.ui.render.common import RenderContext, Screen, button, describe_nearest, format_size, markup, rows
 from app.ui.views import ViewState
 
 

@@ -118,8 +118,11 @@ class UpgradeMonitor:
             try:
                 if self._refresh_requested or time.monotonic() >= next_poll_at:
                     self._refresh_requested = False
-                    await self._poll_cycle()
-                    next_poll_at = time.monotonic() + self._health.retry_delay(self._poll_interval)
+                    try:
+                        await self._poll_cycle()
+                    finally:
+                        # Also after a crashed cycle: otherwise it would be retried every second.
+                        next_poll_at = time.monotonic() + self._health.retry_delay(self._poll_interval)
                 else:
                     await self._process(self._previous, self._snapshot, persist=False)
             except asyncio.CancelledError:

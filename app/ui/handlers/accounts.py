@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from html import escape
 
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, Message
@@ -72,7 +73,7 @@ class AccountHandlers:
         if account is None or not self._import_available:
             await callback.answer("Аккаунт не найден", show_alert=True)
             return
-        self._imports.arm(callback.message.chat.id, callback.from_user.id, account.name)
+        self._imports.arm(callback.message.chat.id, callback.from_user.id, account.name, replace_village_id=village_id)
         await callback.answer()
         await self._menu.open_from_callback(callback, ViewState.import_for(village_id))
 
@@ -88,7 +89,7 @@ class AccountHandlers:
         await callback.answer()
         await self._say(
             chat_id,
-            f"✏️ Отправьте новое имя для <b>«{_escape(account.name)}»</b> (до {MAX_NAME_LENGTH} символов) "
+            f"✏️ Отправьте новое имя для <b>«{escape(account.name)}»</b> (до {MAX_NAME_LENGTH} символов) "
             "или /cancel.",
         )
 
@@ -126,7 +127,7 @@ class AccountHandlers:
         try:
             summary = await self._accounts.rename(village_id, message.text or "")
         except AccountStoreError as error:
-            await self._say(chat_id, f"❌ {_escape(str(error))} Попробуйте другое имя или отправьте /cancel.")
+            await self._say(chat_id, f"❌ {escape(str(error))} Попробуйте другое имя или отправьте /cancel.")
             return
         self._renames.cancel(chat_id, message.from_user.id)
         logger.info("Account renamed by %s: -> %s", describe_actor(message), summary.name)
@@ -138,6 +139,3 @@ class AccountHandlers:
         except TelegramUnavailable as error:
             logger.warning("Could not send a message to chat %s: %s", chat_id, error)
 
-
-def _escape(text: str) -> str:
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")

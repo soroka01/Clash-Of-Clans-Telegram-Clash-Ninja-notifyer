@@ -49,7 +49,7 @@ class SettingsLoader:
             data_source=data_source,
             json_accounts_directory=Path(raw.get("json_accounts_directory", "accounts")),
             clash_ninja=self._clash_ninja(raw) if data_source == DATA_SOURCE_CLASH_NINJA else None,
-            announce_on_timer=bool(raw.get("announce_on_timer", True)),
+            announce_on_timer=self._flag(raw, "announce_on_timer", True),
             announce_max_age_hours=max(1, self._int(raw, "announce_max_age_hours", 24)),
             failure_alert_threshold=max(0, self._int(raw, "failure_alert_threshold", 3)),
             json_import=self._import_settings(raw),
@@ -72,11 +72,22 @@ class SettingsLoader:
             raise RuntimeError(f"В {self._path} отсутствуют поля: {', '.join(missing)}")
 
     @staticmethod
-    def _int(raw: dict[str, Any], key: str, default: int) -> int:
+    def _number(section: dict[str, Any], key: str, default: float, cast: type = int, label: str | None = None):
         try:
-            return int(raw.get(key, default))
+            return cast(section.get(key, default))
         except (TypeError, ValueError) as error:
-            raise RuntimeError(f"Поле {key} должно быть целым числом") from error
+            raise RuntimeError(f"Поле {label or key} должно быть числом") from error
+
+    @classmethod
+    def _int(cls, raw: dict[str, Any], key: str, default: int, label: str | None = None) -> int:
+        return cls._number(raw, key, default, int, label)
+
+    @staticmethod
+    def _flag(section: dict[str, Any], key: str, default: bool, label: str | None = None) -> bool:
+        value = section.get(key, default)
+        if not isinstance(value, bool):
+            raise RuntimeError(f"Поле {label or key} должно быть true или false")
+        return value
 
     @staticmethod
     def _int_list(raw: dict[str, Any], key: str) -> list[int]:
@@ -101,16 +112,16 @@ class SettingsLoader:
         return ClashNinjaSettings(
             tracker_url=ninja.get("tracker_url", _DEFAULT_TRACKER_URL),
             cookie_header=cookie_header,
-            request_timeout_seconds=max(5, int(ninja.get("request_timeout_seconds", 30))),
+            request_timeout_seconds=max(5, self._int(ninja, "request_timeout_seconds", 30, "clash_ninja.request_timeout_seconds")),
         )
 
     def _import_settings(self, raw: dict[str, Any]) -> ImportSettings:
         section = raw.get("json_import") or {}
         # Bot API downloads stop at 20 MB, so a larger limit could never be reached anyway.
-        megabytes = min(19, max(1, int(section.get("max_megabytes", 5))))
-        idle_seconds = min(30.0, max(1.0, float(section.get("idle_seconds", 3))))
+        megabytes = min(19, max(1, self._int(section, "max_megabytes", 5, "json_import.max_megabytes")))
+        idle_seconds = min(30.0, max(1.0, self._number(section, "idle_seconds", 3, float, "json_import.idle_seconds")))
         return ImportSettings(
             max_bytes=megabytes * 1024 * 1024,
             idle_seconds=idle_seconds,
-            delete_messages=bool(section.get("delete_messages", True)),
+            delete_messages=self._flag(section, "delete_messages", True, "json_import.delete_messages"),
         )
